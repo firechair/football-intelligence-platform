@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -141,11 +142,20 @@ func (fm *FileManager) CleanupOldParsedFiles(maxAge time.Duration) error {
 	// Current time
 	now := time.Now()
 
+	// Keep track of deleted files to log a summary
+	deletedCount := 0
+	successCount := 0
+
 	// Check each file's age
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
 		}
+
+		filePath := filepath.Join(fm.parsedDir, entry.Name())
+
+		// Check if this is a success marker file
+		isSuccessFile := strings.HasSuffix(filePath, ".success")
 
 		// Get file info to check modification time
 		info, err := entry.Info()
@@ -156,16 +166,31 @@ func (fm *FileManager) CleanupOldParsedFiles(maxAge time.Duration) error {
 
 		// If the file is older than maxAge, delete it
 		if now.Sub(info.ModTime()) > maxAge {
-			filePath := filepath.Join(fm.parsedDir, entry.Name())
 			if err := os.Remove(filePath); err != nil {
 				fm.logger.Warn("Failed to remove old parsed file %s: %v", filePath, err)
 				continue
 			}
 
-			fm.logger.Info("Removed old parsed file: %s", filePath)
+			if isSuccessFile {
+				successCount++
+			} else {
+				deletedCount++
+
+				// Also delete the corresponding .success file if it exists
+				successFilePath := filePath + ".success"
+				if _, err := os.Stat(successFilePath); err == nil {
+					if err := os.Remove(successFilePath); err != nil {
+						fm.logger.Warn("Failed to remove success marker file %s: %v", successFilePath, err)
+					} else {
+						successCount++
+					}
+				}
+			}
 		}
 	}
 
+	fm.logger.Info("Cleanup completed: removed %d parsed files and %d success markers older than %v",
+		deletedCount, successCount, maxAge)
 	return nil
 }
 
@@ -201,4 +226,47 @@ func (fm *FileManager) GetFileStats() (map[string]int, error) {
 	}
 
 	return stats, nil
+}
+
+// SaveData saves the provided data to a file and returns the file path
+func (fm *FileManager) SaveData(data []byte, isGzipped bool) (string, error) {
+	// Generate a unique filename with timestamp
+	timestamp := time.Now().Format("20060102-150405.000")
+	var filename string
+	if isGzipped {
+		filename = fmt.Sprintf("odds_%s.xml.gz", timestamp)
+	} else {
+		filename = fmt.Sprintf("odds_%s.xml", timestamp)
+	}
+
+	filePath := filepath.Join(fm.baseDir, filename)
+
+	// Create the file
+	file, err := os.Create(filePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to create file: %w", err)
+	}
+	defer file.Close()
+
+	// Write the data to the file
+	if _, err := file.Write(data); err != nil {
+		return "", fmt.Errorf("failed to write to file: %w", err)
+	}
+
+	fm.logger.Info("Saved received data to file: %s", filePath)
+	return filePath, nil
+}
+
+func (fm *FileManager) MarkFileAsSuccessfullyProcessed(filePath string) error {
+	// Create a success marker file next to the parsed file
+	parsedPath := filepath.Join(fm.parsedDir, filepath.Base(filePath))
+	successMarkerPath := parsedPath + ".success"
+
+	file, err := os.Create(successMarkerPath)
+	if err != nil {
+		return fmt.Errorf("failed to create success marker: %w", err)
+	}
+	defer file.Close()
+
+	return nil
 }

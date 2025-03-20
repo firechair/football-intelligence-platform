@@ -2,6 +2,8 @@
 package processor
 
 import (
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/firechair/odds-receiver/internal/logging"
@@ -14,16 +16,18 @@ import (
 
 // OddsProcessor processes odds data
 type OddsProcessor struct {
-	store                   storage.Storage
-	queue                   *queue.Queue
-	logger                  logging.Logger
-	metrics                 *metrics.Metrics
-	serieATournamentStageID string
-	targetBookmakerIDs      map[string]bool
+	store              storage.Storage
+	queue              *queue.Queue
+	logger             logging.Logger
+	metrics            *metrics.Metrics
+	targetBookmakerIDs map[string]bool
+
+	// Add outcome store
+	outcomeStore *storage.OutcomeStore
 }
 
 // NewOddsProcessor creates a new OddsProcessor
-func NewOddsProcessor(store storage.Storage, logger logging.Logger, serieATournamentStageID string, targetBookmakerIDs []string) *OddsProcessor {
+func NewOddsProcessor(store storage.Storage, logger logging.Logger, targetBookmakerIDs []string) *OddsProcessor {
 	// Convert target bookmaker IDs to a map for faster lookups
 	bookmakerMap := make(map[string]bool)
 	for _, id := range targetBookmakerIDs {
@@ -31,12 +35,105 @@ func NewOddsProcessor(store storage.Storage, logger logging.Logger, serieATourna
 	}
 
 	return &OddsProcessor{
-		store:                   store,
-		logger:                  logger,
-		metrics:                 metrics.NewMetrics(logger),
-		serieATournamentStageID: serieATournamentStageID,
-		targetBookmakerIDs:      bookmakerMap,
+		store:              store,
+		logger:             logger,
+		metrics:            metrics.NewMetrics(logger),
+		targetBookmakerIDs: bookmakerMap,
 	}
+}
+
+// SetOutcomeStore sets the outcome store for the processor
+func (p *OddsProcessor) SetOutcomeStore(outcomeStore *storage.OutcomeStore) {
+	p.outcomeStore = outcomeStore
+
+	// Register callback for when pending offers become ready
+	p.outcomeStore.SetPendingOfferCallback(p.handleReadyPendingOffer)
+}
+
+// handleReadyPendingOffer processes a pending offer that now has its outcome data available
+func (p *OddsProcessor) handleReadyPendingOffer(pendingOffer storage.PendingOffer, outcome models.Outcome) {
+	p.logger.Info("Processing previously pending betting offer %s with now available outcome %s",
+		pendingOffer.Offer.ID, outcome.ID)
+
+	// Set up required info for processing this betting offer
+	now := time.Now()
+
+	// Determine if this is a live odds update
+	isLiveOdds := pendingOffer.Offer.IsLive == "yes"
+
+	// If we have event start date, check if timestamp is after event start time
+	if pendingOffer.EventStartDate != "" {
+		eventStartTime, _ := time.Parse("2006-01-02 15:04:05", pendingOffer.EventStartDate)
+		if now.After(eventStartTime) {
+			isLiveOdds = true
+		}
+	}
+
+	// Generate market description
+	marketDescription := GetMarketDescription(
+		outcome.OutcomeTypeFK,
+		outcome.OutcomeSubtypeFK,
+		outcome.OutcomeScopeFK,
+		outcome.DParam)
+
+	// Add team info from the iparam if available (common for markets like 1X2)
+	if (outcome.OutcomeTypeFK == 1 || outcome.OutcomeTypeFK == 2) &&
+		outcome.OutcomeSubtypeFK == 1 && outcome.IParam > 0 {
+		marketDescription += fmt.Sprintf(" (Team ID: %d)", outcome.IParam)
+	}
+
+	// Create odds update
+	update := &models.OddsUpdate{
+		EventID:            pendingOffer.EventID,
+		EventName:          pendingOffer.EventName,
+		EventStartDate:     pendingOffer.EventStartDate,
+		OutcomeID:          outcome.ID,
+		BettingOfferID:     pendingOffer.Offer.ID,
+		ProviderID:         pendingOffer.Offer.OddsProviderFK,
+		ProviderName:       pendingOffer.ProviderName,
+		Odds:               pendingOffer.Offer.Odds,
+		OddsOld:            pendingOffer.Offer.OddsOld,
+		Active:             pendingOffer.Offer.Active,
+		BettingOfferStatus: pendingOffer.Offer.BettingofferStatusFK,
+		Timestamp:          now,
+		OutcomeTypeFK:      outcome.OutcomeTypeFK,
+		OutcomeSubtypeFK:   outcome.OutcomeSubtypeFK,
+		OutcomeScopeFK:     outcome.OutcomeScopeFK,
+		IParam:             outcome.IParam,
+		IsLiveOdds:         isLiveOdds,
+		MatchStatus:        "", // Not available from pending data
+		MatchMinute:        0,  // Not available from pending data
+		Score:              "", // Not available from pending data
+		MarketDescription:  marketDescription,
+	}
+
+	// Store the odds update
+	var err error
+	if p.queue != nil {
+		err = p.queue.QueueStoreOperation(update)
+		if err != nil {
+			p.logger.Error("Failed to queue odds update for pending offer: %v", err)
+			p.metrics.RecordDynamoFailure()
+			return
+		}
+		p.metrics.RecordOperationQueued()
+	} else {
+		err = p.store.StoreOddsUpdate(update)
+		if err != nil {
+			p.logger.Error("Failed to store odds update for pending offer: %v", err)
+			p.metrics.RecordDynamoFailure()
+			return
+		}
+		p.metrics.RecordDynamoSuccess()
+	}
+
+	p.logger.Info("Successfully processed pending betting offer %s with market type %s",
+		pendingOffer.Offer.ID, marketDescription)
+}
+
+// IsTargetBookmaker checks if a bookmaker ID is in the target list
+func (p *OddsProcessor) IsTargetBookmaker(bookmakerID string) bool {
+	return p.targetBookmakerIDs[bookmakerID]
 }
 
 // SetQueue sets the queue for the processor
@@ -44,31 +141,109 @@ func (p *OddsProcessor) SetQueue(q *queue.Queue) {
 	p.queue = q
 }
 
+// Extract event information from couponKey
+func extractEventFromCouponKey(couponKey string) (string, string, string) {
+	// Skip empty coupon keys
+	if couponKey == "" {
+		return "", "", ""
+	}
+
+	// Clean up the coupon key
+	couponKey = strings.TrimSpace(couponKey)
+
+	// Handle different coupon key formats
+
+	// Format: "/evento/calcio/ita-serie-a/juventus-genoa"
+	if strings.HasPrefix(couponKey, "/evento/") {
+		parts := strings.Split(couponKey, "/")
+		cleanParts := []string{}
+		for _, part := range parts {
+			if part != "" {
+				cleanParts = append(cleanParts, part)
+			}
+		}
+
+		// Check if we have enough parts
+		if len(cleanParts) < 4 {
+			return "", "", ""
+		}
+
+		// Extract league and match
+		league := cleanParts[2]
+		matchPart := cleanParts[3]
+
+		// Process match part
+		matchTeams := strings.Split(matchPart, "-")
+		if len(matchTeams) < 2 {
+			return matchPart, matchPart, league
+		}
+
+		// Format team names
+		homeTeam := strings.ToTitle(matchTeams[0])
+		awayTeam := strings.ToTitle(matchTeams[1])
+
+		eventName := fmt.Sprintf("%s vs %s", homeTeam, awayTeam)
+		return matchPart, eventName, league
+	}
+
+	// Format: "&bs=170788949-287367663~3/1~0&bet=1"
+	if strings.Contains(couponKey, "&bs=") {
+		// Extract the match ID from this format
+		startIdx := strings.Index(couponKey, "&bs=")
+		if startIdx >= 0 {
+			parts := strings.Split(couponKey[startIdx+4:], "-")
+			if len(parts) >= 2 {
+				matchID := parts[0]
+				// We don't have team names in this format, so use match ID for both
+				return matchID, matchID, ""
+			}
+		}
+	}
+
+	// Handle other formats
+	// ...
+
+	// Default: couldn't parse
+	return "", "", ""
+}
+
 // Process processes the parsed XML data
 func (p *OddsProcessor) Process(data *parser.OddsData) error {
 	now := time.Now()
 	startTime := time.Now()
 
+	// First, store any outcomes we find for future reference
+	if len(data.Outcomes) > 0 {
+		p.logger.Info("Storing %d outcomes for future reference", len(data.Outcomes))
+		for _, outcome := range data.Outcomes {
+			p.outcomeStore.StoreOutcome(outcome)
+		}
+	}
+
+	// Also store any odds providers we find
+	if len(data.OddsProviders) > 0 {
+		p.logger.Info("Storing %d odds providers for future reference", len(data.OddsProviders))
+		for _, provider := range data.OddsProviders {
+			p.outcomeStore.StoreProvider(provider.ID, provider.Name)
+		}
+	}
+
 	// Track live odds metrics separately
 	liveOffersProcessed := 0
 
-	p.logger.Info("Processing odds data with %d betting offers (isLiveData: %v)",
-		len(data.BettingOffers), data.LiveOdds)
+	p.logger.Info("Processing odds data with %d betting offers, %d outcomes (isLiveData: %v)",
+		len(data.BettingOffers), len(data.Outcomes), data.LiveOdds)
 
 	// Keep count of offers processed
 	processed := 0
 	skipped := 0
-	filteredByTournament := 0
+	skippedNoMarketInfo := 0
 	filteredByBookmaker := 0
+	queuedAsPending := 0
 
-	// Build a map of events for Serie A filtering and easy lookup of event details
-	serieAEvents := make(map[string]bool)
+	// Build a map of events for filtering and easy lookup of event details
 	eventDetails := make(map[string]models.Event)
 	for _, event := range data.Events {
-		if event.TournamentStageFK == p.serieATournamentStageID {
-			serieAEvents[event.ID] = true
-		}
-		// Store event details for later lookup
 		eventDetails[event.ID] = event
 	}
 
@@ -103,37 +278,115 @@ func (p *OddsProcessor) Process(data *parser.OddsData) error {
 		if outcomeEventID, exists := outcomeToEvent[outcomeID]; exists {
 			eventID = outcomeEventID
 		} else {
-			// Try to find the event ID via the outcomes
-			for _, outcome := range data.Outcomes {
-				if outcome.ID == outcomeID && outcome.Object == "event" {
-					eventID = outcome.ObjectFK
-					break
+			// Try to find the event ID via stored outcomes
+			outcome, found := p.outcomeStore.GetOutcome(outcomeID)
+			if found && outcome.Object == "event" {
+				eventID = outcome.ObjectFK
+			}
+		}
+
+		// If eventID is still empty, try to extract it from couponKey
+		if eventID == "" && offer.CouponKey != "" {
+			matchId, eventName, _ := extractEventFromCouponKey(offer.CouponKey)
+			if matchId != "" {
+				// Use matchId as eventID
+				eventID = matchId
+				p.logger.Debug("Using match ID %s from couponKey: %s", eventID, offer.CouponKey)
+
+				// If we have the match name but no event in the database,
+				// we can create a minimal event record
+				if _, exists := eventDetails[eventID]; !exists {
+					eventDetails[eventID] = models.Event{
+						ID:        eventID,
+						Name:      eventName,
+						StartDate: time.Now().Format("2006-01-02 15:04:05"), // Approximate
+					}
 				}
 			}
 		}
 
-		// Check if the event is from Serie A
-		if eventID != "" && !serieAEvents[eventID] {
-			filteredByTournament++
+		// Skip if we still don't have an eventID
+		if eventID == "" {
+			p.logger.Warn("Skipping betting offer %s: could not determine event ID", offer.ID)
 			skipped++
 			continue
 		}
 
 		// Find the associated outcome
 		var outcomeInfo models.Outcome
+
+		// First try in the current data
+		outcomeFound := false
 		for _, outcome := range data.Outcomes {
 			if outcome.ID == offer.OutcomeFK {
 				outcomeInfo = outcome
+				outcomeFound = true
 				break
+			}
+		}
+
+		// If not found in current data, try from our stored outcomes
+		if !outcomeFound {
+			outcome, found := p.outcomeStore.GetOutcome(offer.OutcomeFK)
+			if found {
+				outcomeInfo = outcome
+				outcomeFound = true
+			} else {
+				// MODIFICATION: Instead of skipping, store as pending
+
+				// Find provider name for the context
+				var providerName string
+				for _, provider := range data.OddsProviders {
+					if provider.ID == offer.OddsProviderFK {
+						providerName = provider.Name
+						break
+					}
+				}
+
+				// If provider name not found in current data, try from stored providers
+				if providerName == "" {
+					if name, found := p.outcomeStore.GetProvider(offer.OddsProviderFK); found {
+						providerName = name
+					} else {
+						providerName = "Provider " + offer.OddsProviderFK
+					}
+				}
+
+				// Get event details
+				var eventName, eventStartDate string
+				if event, exists := eventDetails[eventID]; exists {
+					eventName = event.Name
+					eventStartDate = event.StartDate
+				} else if matchId, name, _ := extractEventFromCouponKey(offer.CouponKey); matchId == eventID {
+					eventName = name
+					// Use current time as an approximation for start date if not available
+					eventStartDate = time.Now().Format("2006-01-02 15:04:05")
+				}
+
+				// Store the betting offer as pending
+				p.outcomeStore.StorePendingOffer(offer, eventID, eventName, eventStartDate, providerName)
+				queuedAsPending++
+				continue
 			}
 		}
 
 		// Find provider name
 		var providerName string
+
+		// First try in the current data
 		for _, provider := range data.OddsProviders {
 			if provider.ID == offer.OddsProviderFK {
 				providerName = provider.Name
 				break
+			}
+		}
+
+		// If not found, try from our stored providers
+		if providerName == "" {
+			if name, found := p.outcomeStore.GetProvider(offer.OddsProviderFK); found {
+				providerName = name
+			} else {
+				providerName = "Provider " + offer.OddsProviderFK
 			}
 		}
 
@@ -142,10 +395,13 @@ func (p *OddsProcessor) Process(data *parser.OddsData) error {
 		if event, exists := eventDetails[eventID]; exists {
 			eventName = event.Name
 			eventStartDate = event.StartDate
+		} else if matchId, name, _ := extractEventFromCouponKey(offer.CouponKey); matchId == eventID {
+			eventName = name
+			// Use current time as an approximation for start date if not available
+			eventStartDate = time.Now().Format("2006-01-02 15:04:05")
 		}
 
-		// Extract match status information (for live odds)
-		// This could come from additional event information or properties
+		// Determine match status and additional info
 		matchStatus := ""
 		matchMinute := 0
 		score := ""
@@ -156,9 +412,6 @@ func (p *OddsProcessor) Process(data *parser.OddsData) error {
 				// Parse status information
 				if event.StatusType == "playing" || event.StatusType == "inprogress" {
 					matchStatus = "LIVE" // Default live status
-
-					// More advanced parsing might extract specific period (1H, 2H, etc.)
-					// and current minute from properties or another source
 				} else if event.StatusType == "notstarted" {
 					matchStatus = "PREMATCH"
 				} else if event.StatusType == "finished" {
@@ -168,14 +421,33 @@ func (p *OddsProcessor) Process(data *parser.OddsData) error {
 		}
 
 		// Determine if this is a live odds update
-		isLiveOdds := data.LiveOdds
+		isLiveOdds := data.LiveOdds || offer.IsLive == "yes"
 
 		// For more precise detection, check if the timestamp is after event start time
-		// This requires parsing the event start date
-		eventStartTime, err := time.Parse("2006-01-02 15:04:05", eventStartDate)
-		if err == nil && now.After(eventStartTime) {
-			isLiveOdds = true
+		if eventStartDate != "" {
+			eventStartTime, _ := time.Parse("2006-01-02 15:04:05", eventStartDate)
+			if now.After(eventStartTime) {
+				isLiveOdds = true
+			}
 		}
+
+		// Generate market description
+		marketDescription := GetMarketDescription(
+			outcomeInfo.OutcomeTypeFK,
+			outcomeInfo.OutcomeSubtypeFK,
+			outcomeInfo.OutcomeScopeFK,
+			outcomeInfo.DParam)
+
+		// Add team info from the iparam if available
+		// This is common for markets like 1X2 where iparam is the team ID
+		if (outcomeInfo.OutcomeTypeFK == 1 || outcomeInfo.OutcomeTypeFK == 2) &&
+			outcomeInfo.OutcomeSubtypeFK == 1 && outcomeInfo.IParam > 0 {
+			marketDescription += fmt.Sprintf(" (Team ID: %d)", outcomeInfo.IParam)
+		}
+
+		// Log detailed market information
+		p.logger.Debug("Processing bet offer %s: Event: %s, Market: %s, Odds: %.2f",
+			offer.ID, eventName, marketDescription, offer.Odds)
 
 		// Create odds update
 		update := &models.OddsUpdate{
@@ -199,6 +471,7 @@ func (p *OddsProcessor) Process(data *parser.OddsData) error {
 			MatchStatus:        matchStatus,
 			MatchMinute:        matchMinute,
 			Score:              score,
+			MarketDescription:  marketDescription,
 		}
 
 		// Track live odds separately for metrics
@@ -235,12 +508,15 @@ func (p *OddsProcessor) Process(data *parser.OddsData) error {
 	// Set custom metrics
 	p.metrics.SetCustomMetric("offers_processed", processed)
 	p.metrics.SetCustomMetric("offers_skipped", skipped)
-	p.metrics.SetCustomMetric("filtered_by_tournament", filteredByTournament)
+	p.metrics.SetCustomMetric("skipped_no_market_info", skippedNoMarketInfo)
 	p.metrics.SetCustomMetric("filtered_by_bookmaker", filteredByBookmaker)
+	p.metrics.SetCustomMetric("offers_queued_as_pending", queuedAsPending)
 	p.metrics.SetCustomMetric("live_offers_processed", liveOffersProcessed)
+	p.metrics.SetCustomMetric("outcome_store_size", p.outcomeStore.GetOutcomeCount())
+	p.metrics.SetCustomMetric("pending_offers_count", p.outcomeStore.GetPendingOffersCount())
 
-	p.logger.Info("Processed %d betting offers (%d live), skipped %d (filtered: %d by tournament, %d by bookmaker) (took %v)",
-		processed, liveOffersProcessed, skipped, filteredByTournament, filteredByBookmaker, time.Since(startTime))
+	p.logger.Info("Processed %d betting offers (%d live), skipped %d (filtered: %d by bookmaker), queued %d as pending (took %v)",
+		processed, liveOffersProcessed, skipped, filteredByBookmaker, queuedAsPending, time.Since(startTime))
 
 	return nil
 }

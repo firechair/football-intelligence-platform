@@ -20,6 +20,7 @@ type Config struct {
 
 	// File storage settings
 	FilesDir string
+	DataDir  string // Add this line
 
 	// Queue settings
 	QueueDir string
@@ -29,8 +30,7 @@ type Config struct {
 	BatchInterval time.Duration
 
 	// Filtering settings
-	SerieATournamentStageID string
-	TargetBookmakerIDs      []string
+	TargetBookmakerIDs []string
 }
 
 // Load loads configuration from environment variables
@@ -49,7 +49,7 @@ func Load() (*Config, error) {
 	// DynamoDB settings
 	dynamoRegion := os.Getenv("DYNAMODB_REGION")
 	if dynamoRegion == "" {
-		dynamoRegion = "us-east-1" // Default region
+		dynamoRegion = "us-east-2" // Default region
 	}
 
 	dynamoTable := os.Getenv("DYNAMODB_TABLE")
@@ -61,6 +61,11 @@ func Load() (*Config, error) {
 	filesDir := os.Getenv("FILES_DIR")
 	if filesDir == "" {
 		filesDir = "./files" // Default files directory
+	}
+
+	dataDir := os.Getenv("DATA_DIR")
+	if dataDir == "" {
+		dataDir = "./data" // Default data directory
 	}
 
 	// Queue settings
@@ -86,33 +91,26 @@ func Load() (*Config, error) {
 		}
 	}
 
-	// Serie A Tournament Stage ID - this is the ID for Serie A in Enetpulse system
-	serieATournamentStageID := os.Getenv("SERIE_A_TOURNAMENT_STAGE_ID")
-	if serieATournamentStageID == "" {
-		// You'll need to find the actual ID for Serie A
-		serieATournamentStageID = "885640" // Example ID, replace with actual
-	}
-
 	// Target Bookmakers - comma-separated list of bookmaker IDs
 	targetBookmakerIDsStr := os.Getenv("TARGET_BOOKMAKER_IDS")
 	var targetBookmakerIDs []string
 	if targetBookmakerIDsStr == "" {
 		// Replace with your four specific bookmaker IDs
-		targetBookmakerIDs = []string{"23", "7", "135", "370"} // Example IDs: Bookmaker A, Bookmaker H, etc.
+		targetBookmakerIDs = []string{"23", "124", "379", "455"} // Example IDs: Bookmaker A, Bookmaker H, etc.
 	} else {
 		targetBookmakerIDs = strings.Split(targetBookmakerIDsStr, ",")
 	}
 
 	return &Config{
-		Port:                    port,
-		MetricsPort:             metricsPort,
-		DynamoDBRegion:          dynamoRegion,
-		DynamoDBTable:           dynamoTable,
-		FilesDir:                filesDir,
-		QueueDir:                queueDir,
-		BatchSize:               batchSize,
-		BatchInterval:           batchInterval,
-		SerieATournamentStageID: serieATournamentStageID,
-		TargetBookmakerIDs:      targetBookmakerIDs,
+		Port:               port,
+		MetricsPort:        metricsPort,
+		DynamoDBRegion:     dynamoRegion,
+		DynamoDBTable:      dynamoTable,
+		FilesDir:           filesDir,
+		DataDir:            dataDir,
+		QueueDir:           queueDir,
+		BatchSize:          batchSize,
+		BatchInterval:      batchInterval,
+		TargetBookmakerIDs: targetBookmakerIDs,
 	}, nil
 }

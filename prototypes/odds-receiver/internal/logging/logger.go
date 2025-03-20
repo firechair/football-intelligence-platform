@@ -2,8 +2,10 @@
 package logging
 
 import (
+	"fmt"
 	"log"
 	"os"
+	"runtime"
 )
 
 // Logger defines a simple logging interface
@@ -12,6 +14,7 @@ type Logger interface {
 	Info(format string, v ...interface{})
 	Warn(format string, v ...interface{})
 	Error(format string, v ...interface{})
+	ErrorWithStack(format string, v ...interface{})
 }
 
 // StandardLogger implements Logger using standard log package
@@ -50,4 +53,10 @@ func (l *StandardLogger) Warn(format string, v ...interface{}) {
 // Error logs error messages
 func (l *StandardLogger) Error(format string, v ...interface{}) {
 	l.errorLog.Printf(format, v...)
+}
+
+func (l *StandardLogger) ErrorWithStack(format string, v ...interface{}) {
+	buf := make([]byte, 8192)
+	n := runtime.Stack(buf, false)
+	l.errorLog.Printf("%s\nStack trace:\n%s", fmt.Sprintf(format, v...), buf[:n])
 }

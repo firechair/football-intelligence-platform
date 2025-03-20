@@ -172,6 +172,12 @@ func (d *DynamoDBStorage) startBatchProcessor() {
 
 // StoreOddsUpdate stores an odds update in DynamoDB
 func (d *DynamoDBStorage) StoreOddsUpdate(update *models.OddsUpdate) error {
+	// Validate required fields
+	if update.EventID == "" {
+		d.logger.Warn("Skipping update with empty event ID for betting offer: %s", update.BettingOfferID)
+		return nil // Skip this record but don't return an error
+	}
+
 	// Add to batch
 	d.batchMutex.Lock()
 	defer d.batchMutex.Unlock()
@@ -200,6 +206,29 @@ func (d *DynamoDBStorage) flushBatchLocked() error {
 		return nil
 	}
 
+	// Filter out items with empty event IDs
+	validItems := make([]models.OddsUpdate, 0, len(d.batchItems))
+	removedCount := 0
+	for _, item := range d.batchItems {
+		if item.EventID != "" {
+			validItems = append(validItems, item)
+		} else {
+			removedCount++
+		}
+	}
+
+	if removedCount > 0 {
+		d.logger.Info("Removed %d items with empty event IDs from batch", removedCount)
+	}
+
+	d.batchItems = validItems
+
+	// If no valid items remain, just return
+	if len(d.batchItems) == 0 {
+		d.logger.Info("No valid items in batch after filtering")
+		return nil
+	}
+
 	d.logger.Info("Flushing batch of %d items to DynamoDB", len(d.batchItems))
 	startTime := time.Now()
 
@@ -224,11 +253,29 @@ func (d *DynamoDBStorage) flushBatchLocked() error {
 			"active":             &types.AttributeValueMemberS{Value: update.Active},
 			"bettingOfferStatus": &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", update.BettingOfferStatus)},
 			"timestamp":          &types.AttributeValueMemberS{Value: timestampStr},
-			"outcomeTypeFK":      &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", update.OutcomeTypeFK)},    // Tells you what type of market (1=1X2, 4=Over/Under)
-			"outcomeSubtypeFK":   &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", update.OutcomeSubtypeFK)}, // Tells you which selection (1=win, 2=draw)
-			"outcomeScopeFK":     &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", update.OutcomeScopeFK)},   // Tells you time period (1=full match, 4=first half)
-			"iparam":             &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", update.IParam)},           // Often contains team ID for team-specific selections
+			"outcomeTypeFK":      &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", update.OutcomeTypeFK)},
+			"outcomeSubtypeFK":   &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", update.OutcomeSubtypeFK)},
+			"outcomeScopeFK":     &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", update.OutcomeScopeFK)},
+			"iparam":             &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", update.IParam)},
 			"isLiveOdds":         &types.AttributeValueMemberBOOL{Value: update.IsLiveOdds},
+		}
+
+		// Add optional fields if they're set
+		if update.MatchStatus != "" {
+			item["matchStatus"] = &types.AttributeValueMemberS{Value: update.MatchStatus}
+		}
+
+		if update.MatchMinute > 0 {
+			item["matchMinute"] = &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", update.MatchMinute)}
+		}
+
+		if update.Score != "" {
+			item["score"] = &types.AttributeValueMemberS{Value: update.Score}
+		}
+
+		// Add market description if available
+		if update.MarketDescription != "" {
+			item["marketDescription"] = &types.AttributeValueMemberS{Value: update.MarketDescription}
 		}
 
 		writeRequests = append(writeRequests, types.WriteRequest{
