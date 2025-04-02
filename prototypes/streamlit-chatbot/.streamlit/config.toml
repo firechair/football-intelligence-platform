@@ -1,0 +1,17 @@
+[server]
+enableXsrfProtection = false
+enableCORS = false
+
+[browser]
+serverAddress = "localhost"
+gatherUsageStats = false
+
+[theme]
+primaryColor="#F63366"
+backgroundColor="#FFFFFF"
+secondaryBackgroundColor="#f0f2f6"
+textColor="#262730"
+font="sans serif"
+
+[logger]
+level = "error"

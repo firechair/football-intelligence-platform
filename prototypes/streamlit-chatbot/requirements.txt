@@ -1,0 +1,10 @@
+streamlit
+transformers
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+accelerate
+protobuf
+sentencepiece
+google
+beautifulsoup4
+requests
