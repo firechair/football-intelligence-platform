@@ -1,0 +1,212 @@
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+ 
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+    --primary: 240 5.9% 10%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+    --accent: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 240 5.9% 10%;
+    --radius: 0.5rem;
+  }
+ 
+  .dark {
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 240 5.9% 10%;
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: 240 4.9% 83.9%;
+  }
+}
+ 
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-size: 0.85rem;
+  }
+  h1 {
+    font-size: 1.2rem;
+  }
+  h2 {
+    font-size: 1.05rem;
+  }
+  h3 {
+    font-size: 0.95rem;
+  }
+  h4 {
+    font-size: 0.9rem;
+  }
+  p {
+    font-size: 0.85rem;
+  }
+}
+
+@layer components {
+  .match-card {
+    @apply !py-1 !px-3;
+  }
+  .match-card-header {
+    @apply !py-1 !px-3;
+  }
+  .match-card-content {
+    @apply !py-1 !px-3;
+  }
+  .match-title {
+    @apply text-sm font-medium;
+  }
+  .match-time {
+    @apply text-[10px] text-muted-foreground;
+  }
+  .match-odds {
+    @apply text-[10px] font-medium;
+  }
+  .match-news {
+    @apply text-[10px] text-muted-foreground mt-1;
+  }
+  .match-container {
+    @apply space-y-2;
+  }
+  .match-header {
+    @apply text-sm font-medium mb-2;
+  }
+  .bet-green {
+    color: #3fa34d !important;
+  }
+  .header-purple {
+    color: #8546c3 !important;
+  }
+  .bg-header-purple {
+    background-color: #8546c3 !important;
+  }
+  .bg-bet-green {
+    background-color: #3fa34d !important;
+  }
+  .header-font {
+    font-family: 'Montserrat', Arial, Helvetica, sans-serif;
+  }
+  .cool-hover {
+    transition: transform 0.18s cubic-bezier(0.4,0,0.2,1), box-shadow 0.18s cubic-bezier(0.4,0,0.2,1);
+  }
+  .cool-hover:hover, .cool-hover:focus-visible {
+    transform: translateY(-2px) scale(1.04);
+    box-shadow: 0 6px 24px 0 rgba(60,60,60,0.12), 0 1.5px 4px 0 rgba(60,60,60,0.10);
+  }
+} 
+
+/* Animazioni personalizzate */
+@keyframes slideInFromBottom {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-in {
+  animation: slideInFromBottom 0.3s ease-out;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.3s ease-out;
+}
+
+/* Transizioni per le sezioni espandibili */
+.section-expand {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.section-expand.expanded {
+  transform: scale(1.02);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+}
+
+/* Modal backdrop blur */
+.modal-backdrop {
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+/* Hover effects per i match */
+.match-item {
+  transition: all 0.2s ease-in-out;
+}
+
+.match-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Loading spinner */
+.spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+} 

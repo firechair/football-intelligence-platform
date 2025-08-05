@@ -1,0 +1,52 @@
+{
+  "name": "web",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@radix-ui/react-label": "^2.1.6",
+    "@radix-ui/react-scroll-area": "^1.2.8",
+    "@radix-ui/react-select": "^2.2.4",
+    "@radix-ui/react-slot": "^1.0.2",
+    "@radix-ui/react-tabs": "^1.1.11",
+    "@radix-ui/react-tooltip": "^1.0.7",
+    "@tanstack/react-query": "^5.81.5",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.1.0",
+    "framer-motion": "^11.0.3",
+    "lightweight-charts": "^5.0.8",
+    "lucide-react": "^0.323.0",
+    "next": "14.2.5",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "recharts": "^3.0.2",
+    "tailwind-merge": "^2.2.1",
+    "zustand": "^5.0.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.16",
+    "@types/react": "^18.2.43",
+    "@types/react-dom": "^18.2.17",
+    "@typescript-eslint/eslint-plugin": "^6.14.0",
+    "@typescript-eslint/parser": "^6.14.0",
+    "autoprefixer": "^10.4.17",
+    "eslint": "^8.55.0",
+    "eslint-config-next": "14.2.5",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "eslint-plugin-react-refresh": "^0.4.5",
+    "postcss": "^8.4.33",
+    "tailwindcss": "^3.4.1",
+    "tailwindcss-animate": "^1.0.7",
+    "typescript": "^5.2.2"
+  },
+  "description": "FIP Frontend - Next.js application for betting AI-powered platform",
+  "keywords": ["nextjs", "react", "typescript", "tailwindcss", "betting"],
+  "author": "FIP Team",
+  "license": "MIT"
+}
