@@ -5,7 +5,8 @@ const nextConfig = {
   
   // Environment variables for production
   env: {
-    NEXT_PUBLIC_BACKEND_URL: process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000',
+    // Do not fallback to localhost in production without explicit env
+    NEXT_PUBLIC_BACKEND_URL: process.env.NEXT_PUBLIC_BACKEND_URL,
   },
   
   // Image optimization
@@ -21,7 +22,8 @@ const nextConfig = {
   
   // API routes configuration
   async rewrites() {
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || '';
+    if (!backendUrl) return [];
     return [
       {
         source: '/api/:path*',
