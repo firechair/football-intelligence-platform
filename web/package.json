@@ -30,8 +30,8 @@
     "zustand": "^5.0.4"
   },
   "devDependencies": {
-    "@types/node": "^20.11.16",
-    "@types/react": "^18.2.43",
+    "@types/node": "20.19.10",
+    "@types/react": "18.3.23",
     "@types/react-dom": "^18.2.17",
     "@typescript-eslint/eslint-plugin": "^6.14.0",
     "@typescript-eslint/parser": "^6.14.0",
@@ -43,10 +43,16 @@
     "postcss": "^8.4.33",
     "tailwindcss": "^3.4.1",
     "tailwindcss-animate": "^1.0.7",
-    "typescript": "^5.2.2"
+    "typescript": "5.9.2"
   },
   "description": "FIP Frontend - Next.js application for betting AI-powered platform",
-  "keywords": ["nextjs", "react", "typescript", "tailwindcss", "betting"],
+  "keywords": [
+    "nextjs",
+    "react",
+    "typescript",
+    "tailwindcss",
+    "betting"
+  ],
   "author": "FIP Team",
   "license": "MIT"
 }
