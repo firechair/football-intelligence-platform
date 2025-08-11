@@ -10,6 +10,10 @@ requests==2.31.0
 aiohttp==3.9.1
 pydantic==2.5.0
 pydantic-settings==2.1.0
+# EmailStr dependency (required by pydantic EmailStr)
+email-validator==2.1.0.post1
+# HTTP client used across API modules
+httpx==0.27.0
 # Railway dependencies
 psycopg2-binary==2.9.9
 gunicorn==21.2.0
