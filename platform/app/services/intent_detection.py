@@ -346,6 +346,11 @@ class IntentDetector:
             'odds': 'odds',
             'formazioni': 'lineups',
             'lineups': 'lineups',
+            # Statistiche squadre (stagionali)
+            'statistiche': 'teamstats',
+            'stats': 'teamstats',
+            'statistiche squadre': 'teamstats',
+            'statistiche stagionali': 'teamstats',
 
             'scontri diretti': 'h2h',
             'scontri': 'h2h',
