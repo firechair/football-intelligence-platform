@@ -29,6 +29,11 @@ const nextConfig = {
         source: '/api/:path*',
         destination: `${backendUrl}/api/:path*`,
       },
+      // Fallback favicon to avoid 404s in production
+      {
+        source: '/favicon.ico',
+        destination: '/fip-logo.png',
+      },
     ]
   },
   
