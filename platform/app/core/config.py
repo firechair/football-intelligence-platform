@@ -29,7 +29,12 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 # CORS Configuration
-ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173").split(",")
+ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173").split(",") if o.strip()]
+
+# Ensure production frontend domain is allowed if present in env
+FRONTEND_DOMAIN = os.getenv("FRONTEND_DOMAIN")
+if FRONTEND_DOMAIN and FRONTEND_DOMAIN not in ALLOWED_ORIGINS:
+    ALLOWED_ORIGINS.append(FRONTEND_DOMAIN)
 
 class Settings:
     DATABASE_URL: str = DATABASE_URL
