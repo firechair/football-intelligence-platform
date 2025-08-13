@@ -137,9 +137,9 @@ class IntentDetector:
             IntentType.CHART_REQUEST: [
                 {
                     "patterns": [
-                        r"(?:mostra|visualizza|vedi)\s+(?:il\s+)?(?:grafico\s+)?(?:della\s+)?(?:quota|odds)\s+(?:per|di|del)\s+([\w\s]+)",
-                        r"(?:grafico\s+)?(?:della\s+)?(?:quota|odds)\s+(?:per|di|del)\s+([\w\s]+)",
-                        r"(?:mostra|visualizza|vedi)\s+(?:il\s+)?(?:andamento\s+)?(?:della\s+)?(?:quota|odds)\s+(?:per|di|del)\s+([\w\s]+)"
+                        r"(?:mostra|visualizza|vedi|apri|aprimi|aprirmi)\s+(?:il\s+)?(?:grafico\s+)?(?:della\s+)?(?:quota|odds)\s+(?:per|di|del)\s+([\w\s]+)",
+                        r"(?:puoi\s+)?apr(?:ire|irmi)\s+(?:il\s+)?(?:grafico\s+)?(?:della\s+)?(?:quota|odds)\s+(?:per|di|del)\s+([\w\s]+)",
+                        r".*grafico.*quot[ae].*(?:per|di|del)\s+([A-Za-zÀ-ÿ0-9'\-\.\s]+)"
                     ],
                     "entities": ["team_or_match"],
                     "confidence": ConfidenceLevel.MEDIUM
@@ -595,11 +595,15 @@ class IntentDetector:
                 print(f"[DEBUG INTENT] Estratta league: '{entities['league']}' da frase: '{message}'")
             else:
                 # Fallback: estrai solo la parte dopo 'del', 'di', 'per', ecc.
-                match = re.search(r"(?:del|di|per|della|dello|dell'|delle|dell' )\s*([a-zA-Zàèéìòù'\-\s]{3,})", msg)
+                match = re.search(r"(?:del|di|per|della|dello|dell'|delle|dell' )\s+([a-zA-ZÀ-ÿ0-9'\-\.\s]{3,})", message, re.IGNORECASE)
                 if match:
                     candidate = match.group(1).strip()
-                    words = re.findall(r"[a-zA-Zàèéìòù'\-]{3,}", candidate)
-                    banned_words = set(["classifica","standings","quote","odds","formazioni","lineups","statistiche","stats","scontri","diretti","h2h","overview","panoramica","mercato","quota","schedina","betbuilder","partita","match","insieme"])
+                    words = re.findall(r"[a-zA-ZÀ-ÿ0-9'\-]{3,}", candidate)
+                    banned_words = set([
+                        "classifica","standings","quote","odds","formazioni","lineups","statistiche","stats",
+                        "scontri","diretti","h2h","overview","panoramica","mercato","quota","schedina","betbuilder",
+                        "partita","match","insieme","del","della","dei","degli","dello","delle","di","per"
+                    ])
                     if words:
                         filtered = [w for w in words if w.lower() not in banned_words]
                         if filtered:
