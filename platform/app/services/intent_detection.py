@@ -599,15 +599,11 @@ class IntentDetector:
                 if match:
                     candidate = match.group(1).strip()
                     words = re.findall(r"[a-zA-Zàèéìòù'\-]{3,}", candidate)
+                    banned_words = set(["classifica","standings","quote","odds","formazioni","lineups","statistiche","stats","scontri","diretti","h2h","overview","panoramica","mercato","quota","schedina","betbuilder","partita","match","insieme"])
                     if words:
-                        team_entity = words[-1]
-                        # Controlla se la parola è una sezione, non una squadra
-                        section_keywords = ["classifica", "standings", "quote", "odds", "formazioni", "lineups", "statistiche", "stats", "scontri", "diretti", "h2h", "overview", "panoramica"]
-                        if team_entity.lower() in section_keywords:
-                            # Non estrarre parole di sezione come team_or_match
-                            pass
-                        else:
-                            # Miglioro la normalizzazione per suffissi femminili/maschili
+                        filtered = [w for w in words if w.lower() not in banned_words]
+                        if filtered:
+                            team_entity = filtered[-1]
                             team_entity_norm = team_entity.lower()
                             for suffix in [" w", " women", " femminile", " ladies", " girls"]:
                                 if team_entity_norm.endswith(suffix):
@@ -616,7 +612,7 @@ class IntentDetector:
                     else:
                         # Controlla anche il candidato completo
                         section_keywords = ["classifica", "standings", "quote", "odds", "formazioni", "lineups", "statistiche", "stats", "scontri", "diretti", "h2h", "overview", "panoramica"]
-                        if candidate.lower() not in section_keywords:
+                        if candidate.lower() not in section_keywords and candidate.lower() not in banned_words:
                             entities["team_or_match"] = candidate
         # --- Nuovo pattern: estrai 'team_or_match' da frasi con 'vs' o '-' ---
         # Pattern più specifico per estrarre solo i nomi delle squadre
