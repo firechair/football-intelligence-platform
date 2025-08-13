@@ -424,7 +424,9 @@ class IntentDetector:
             "matches": "matches",
             "news": "news",
             "simulator": "simulator",
-            "features": "features"
+            "features": "features",
+            "betbuilder": "betbuilder",
+            "schedina": "betbuilder"
         }
         
         return destination_mapping.get(destination_lower, destination)
@@ -735,6 +737,11 @@ class IntentDetector:
             entities["destination"] = "simulator"
             confidence = 0.9
             patterns_matched.append("simulator_navigation")
+        elif any(x in msg for x in ["apri", "aprimi", "mostra", "mostrami", "vai", "naviga", "spostami", "portami"]) and any(x in msg for x in ["betbuilder", "schedina"]):
+            intent = "navigation"
+            entities["destination"] = "betbuilder"
+            confidence = 0.95
+            patterns_matched.append("betbuilder_navigation")
         elif any(x in msg for x in ["apri", "aprimi", "mostra", "mostrami", "vai", "naviga", "spostami", "portami"]) and any(x in msg for x in ["partite", "matches", "calendario"]):
             intent = "navigation"
             entities["destination"] = "matches"
