@@ -823,6 +823,11 @@ class IntentDetector:
             patterns_matched.append("prediction")
         elif (any(x in msg for x in ["analizza", "multipla", "singola", "sistema", "betbuilder", "schedina", "miglior multipla", "aggiungi", "inserisci", "metti"])):
             intent = "bet_analysis"
+            # Estrarre outcome richiesto se presente (quota 1/X/2)
+            mm = re.search(r"(?:quota|segno|mercato)\s*(1|x|2)", message, re.IGNORECASE)
+            if mm:
+                mo = mm.group(1).upper()
+                entities["market_outcome"] = mo
             patterns_matched.append("bet_analysis")
         elif any(x in msg for x in ["statistica", "statistiche", "stats"]):
             intent = "statistics"
