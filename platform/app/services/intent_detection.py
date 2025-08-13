@@ -828,7 +828,8 @@ class IntentDetector:
         elif any(x in msg for x in ["statistica", "statistiche", "stats"]):
             intent = "statistics"
             patterns_matched.append("statistics")
-        elif any(x in msg for x in ["quando gioca", "calendario", "partite", "prossime partite", "league", "campionato", "campionati"]):
+        elif any(x in msg for x in ["quando gioca", "calendario"]):
+            # Navigazione solo per richieste esplicite di calendario/"quando gioca" (senza destinazione specifica sarà gestito a livello superiore)
             intent = "navigation"
             patterns_matched.append("navigation")
         elif any(x in msg for x in ["ciao", "buongiorno", "salve", "hello", "hi"]):
