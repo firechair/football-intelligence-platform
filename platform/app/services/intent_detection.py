@@ -672,11 +672,11 @@ class IntentDetector:
             if league in msg:
                 entities["league"] = league
 
-        # Outcome 1X2 esplicito (es. "quota 1", "segno X", "mercato 2")
-        market_match = re.search(r"(?:mercato|segno|quota)\s*(1|x|2)", message, re.IGNORECASE)
+        # Outcome 1X2/DoubleChance esplicito (es. "quota 1", "segno X", "mercato 2", "quota 1X", "segno X2", "quota 12")
+        market_match = re.search(r"(?:mercato|segno|quota)\s*(1x|x2|12|1|x|2)", message, re.IGNORECASE)
         if market_match:
             mo = market_match.group(1).upper()
-            if mo in ["1", "X", "2"]:
+            if mo in ["1", "X", "2", "1X", "X2", "12"]:
                 entities["market_outcome"] = mo
         # Date extraction
         if "oggi" in msg:
@@ -819,8 +819,8 @@ class IntentDetector:
             patterns_matched.append("prediction")
         elif (any(x in msg for x in ["analizza", "multipla", "singola", "sistema", "betbuilder", "schedina", "miglior multipla", "aggiungi", "inserisci", "metti"])):
             intent = "bet_analysis"
-            # Estrarre outcome richiesto se presente (quota 1/X/2)
-            mm = re.search(r"(?:quota|segno|mercato)\s*(1|x|2)", message, re.IGNORECASE)
+            # Estrarre outcome richiesto se presente (quota 1/X/2 o 1X/X2/12)
+            mm = re.search(r"(?:quota|segno|mercato)\s*(1x|x2|12|1|x|2)", message, re.IGNORECASE)
             if mm:
                 mo = mm.group(1).upper()
                 entities["market_outcome"] = mo
