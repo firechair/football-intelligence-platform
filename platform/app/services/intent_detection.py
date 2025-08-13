@@ -549,7 +549,7 @@ class IntentDetector:
         
         # CONTROLLO PRIORITARIO: Verifica se è una richiesta di sezione
         section_keywords = ["classifica", "standings", "quote", "odds", "formazioni", "lineups", "scontri diretti", "scontri", "h2h", "overview", "panoramica"]
-        action_keywords = ["apri", "aprimi", "mostra", "mostrami", "vai", "naviga", "spostami"]
+        action_keywords = ["apri", "aprimi", "mostra", "mostrami", "vai", "naviga", "spostami", "torna", "ritorna", "riportami"]
         
         # Se contiene parole di azione E parole di sezione, è probabilmente una richiesta di sezione
         has_action = any(action in msg for action in action_keywords)
@@ -673,6 +673,13 @@ class IntentDetector:
         for league in ["serie a", "premier league", "bundesliga", "la liga", "ligue 1", "champions league"]:
             if league in msg:
                 entities["league"] = league
+
+        # Outcome 1X2 esplicito (es. "quota 1", "segno X", "mercato 2")
+        market_match = re.search(r"(?:mercato|segno|quota)\s*(1|x|2)", message, re.IGNORECASE)
+        if market_match:
+            mo = market_match.group(1).upper()
+            if mo in ["1", "X", "2"]:
+                entities["market_outcome"] = mo
         # Date extraction
         if "oggi" in msg:
             entities["date"] = "today"
@@ -807,7 +814,7 @@ class IntentDetector:
         elif any(x in msg for x in ["predizione", "predizioni", "prediction", "probabilit", "consiglio", "advice"]):
             intent = "odds_query"
             patterns_matched.append("prediction")
-        elif any(x in msg for x in ["analizza", "multipla", "singola", "sistema", "betbuilder", "miglior multipla"]):
+        elif (any(x in msg for x in ["analizza", "multipla", "singola", "sistema", "betbuilder", "schedina", "miglior multipla", "aggiungi", "inserisci", "metti"])):
             intent = "bet_analysis"
             patterns_matched.append("bet_analysis")
         elif any(x in msg for x in ["statistica", "statistiche", "stats"]):
