@@ -23,12 +23,24 @@ class FootballAPIMapper:
     
     def __init__(self):
         self.country_codes = {
-            'italia': 'Italy', 'italy': 'Italy', 'italian': 'Italy',
+            # Italia - tutte le varianti
+            'italia': 'Italy', 'italy': 'Italy', 'italian': 'Italy', 
+            'italiana': 'Italy', 'italiane': 'Italy', 'italiani': 'Italy', 'italiano': 'Italy',
+            # Spagna
             'spain': 'Spain', 'spagna': 'Spain', 'spanish': 'Spain',
+            'spagnola': 'Spain', 'spagnole': 'Spain', 'spagnoli': 'Spain', 'spagnolo': 'Spain',
+            # Inghilterra  
             'england': 'England', 'inghilterra': 'England', 'english': 'England',
-            'france': 'France', 'francia': 'France', 'french': 'France',
+            'inglese': 'England', 'inglesi': 'England',
+            # Francia
+            'france': 'France', 'francia': 'France', 'french': 'France',  
+            'francese': 'France', 'francesi': 'France',
+            # Germania
             'germany': 'Germany', 'germania': 'Germany', 'german': 'Germany',
-            'brasil': 'Brazil', 'brasile': 'Brazil', 'brazil': 'Brazil'
+            'tedesca': 'Germany', 'tedesche': 'Germany', 'tedeschi': 'Germany', 'tedesco': 'Germany',
+            # Brasile
+            'brasil': 'Brazil', 'brasile': 'Brazil', 'brazil': 'Brazil',
+            'brasiliana': 'Brazil', 'brasiliane': 'Brazil', 'brasiliani': 'Brazil', 'brasiliano': 'Brazil'
         }
         
         self.league_mappings = {
@@ -279,14 +291,65 @@ class FootballAPIMapper:
                 priority=1
             ))
         elif country:
-            # Cerca per paese (più complesso, richiede prima recupero campionati)
-            params = {"date": start_date}
-            calls.append(APICall(
-                endpoint="fixtures",
-                params=params,
-                description=f"Partite del {start_date} per filtrare per paese",
-                priority=2
-            ))
+            # Cerca per paese - usa i campionati principali del paese
+            if country == "Italy":
+                # Serie A
+                calls.append(APICall(
+                    endpoint="fixtures",
+                    params={
+                        "league": 135, # Serie A
+                        "season": self.current_season,
+                        "from": start_date,
+                        "to": end_date
+                    },
+                    description=f"Prossime partite Serie A",
+                    priority=1
+                ))
+                # Serie B
+                calls.append(APICall(
+                    endpoint="fixtures", 
+                    params={
+                        "league": 136, # Serie B
+                        "season": self.current_season,
+                        "from": start_date,
+                        "to": end_date
+                    },
+                    description=f"Prossime partite Serie B",
+                    priority=2
+                ))
+            elif country == "Spain":
+                calls.append(APICall(
+                    endpoint="fixtures",
+                    params={
+                        "league": 140, # La Liga
+                        "season": self.current_season,
+                        "from": start_date,
+                        "to": end_date
+                    },
+                    description=f"Prossime partite La Liga",
+                    priority=1
+                ))
+            elif country == "England":
+                calls.append(APICall(
+                    endpoint="fixtures",
+                    params={
+                        "league": 39, # Premier League
+                        "season": self.current_season,
+                        "from": start_date,
+                        "to": end_date
+                    },
+                    description=f"Prossime partite Premier League",
+                    priority=1
+                ))
+            else:
+                # Fallback generico per altri paesi
+                params = {"date": start_date}
+                calls.append(APICall(
+                    endpoint="fixtures",
+                    params=params,
+                    description=f"Partite del {start_date} per filtrare per paese",
+                    priority=2
+                ))
         else:
             # Fallback: partite di oggi/domani
             params = {"date": start_date}
