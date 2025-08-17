@@ -472,3 +472,4 @@ class FootballAPIMapper:
         ))
         
         return calls
+
