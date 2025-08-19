@@ -25,8 +25,19 @@ FOOTBALL_API_KEY = os.getenv("FOOTBALL_API_KEY", "REDACTED")
 
 # JWT Configuration
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
+REFRESH_SECRET_KEY = os.getenv("REFRESH_SECRET_KEY", "your-refresh-secret-key-change-in-production")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 30))
+REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", 30))
+
+# Email Configuration
+SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
+FROM_EMAIL = os.getenv("FROM_EMAIL", "noreply@example.invalid")
+FROM_NAME = os.getenv("FROM_NAME", "FIP")
+BASE_URL = os.getenv("BASE_URL", "https://example.invalid")
+
+# Redis Configuration (for rate limiting)
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
 # CORS Configuration
 ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173").split(",") if o.strip()]
@@ -42,8 +53,15 @@ class Settings:
     PORT: int = PORT
     FOOTBALL_API_KEY: str = FOOTBALL_API_KEY
     SECRET_KEY: str = SECRET_KEY
+    REFRESH_SECRET_KEY: str = REFRESH_SECRET_KEY
     ALGORITHM: str = ALGORITHM
     ACCESS_TOKEN_EXPIRE_MINUTES: int = ACCESS_TOKEN_EXPIRE_MINUTES
+    REFRESH_TOKEN_EXPIRE_DAYS: int = REFRESH_TOKEN_EXPIRE_DAYS
     ALLOWED_ORIGINS: list = ALLOWED_ORIGINS
+    SENDGRID_API_KEY: str = SENDGRID_API_KEY
+    FROM_EMAIL: str = FROM_EMAIL
+    FROM_NAME: str = FROM_NAME
+    BASE_URL: str = BASE_URL
+    REDIS_URL: str = REDIS_URL
 
 settings = Settings() 
