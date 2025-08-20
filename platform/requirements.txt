@@ -25,6 +25,9 @@ pyotp==2.9.0
 qrcode[pil]==7.4.2
 sendgrid==6.10.0
 
+# Redis for rate limiting and caching
+redis==5.0.1
+
 # Testing dependencies
 pytest==7.4.0
 pytest-asyncio==0.21.1
