@@ -40,7 +40,8 @@ BASE_URL = os.getenv("BASE_URL", "https://example.invalid")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
 # CORS Configuration
-ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173").split(",") if o.strip()]
+DEFAULT_ORIGINS = "http://localhost:3000,http://localhost:5173,https://example.invalid"
+ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", DEFAULT_ORIGINS).split(",") if o.strip()]
 
 # Ensure production frontend domain is allowed if present in env
 FRONTEND_DOMAIN = os.getenv("FRONTEND_DOMAIN")
