@@ -230,7 +230,7 @@ def register_minimal(username: str = Body(...), email: str = Body(...), password
         
         logger.info("MINIMAL REGISTRATION: Password hashed")
         
-        # First check what columns exist in the users table
+        # First check what columns actually exist in the users table
         schema_result = db.execute(text("""
             SELECT column_name FROM information_schema.columns 
             WHERE table_name = 'users' AND table_schema = 'public'
@@ -238,36 +238,48 @@ def register_minimal(username: str = Body(...), email: str = Body(...), password
         existing_columns = [row.column_name for row in schema_result.fetchall()]
         logger.info(f"MINIMAL REGISTRATION: Existing columns: {existing_columns}")
         
-        # Add missing columns if they don't exist
-        if 'email_verified' not in existing_columns:
-            db.execute(text("ALTER TABLE users ADD COLUMN email_verified BOOLEAN DEFAULT FALSE"))
-            logger.info("MINIMAL REGISTRATION: Added email_verified column")
+        # Build safe INSERT and RETURNING clauses with only existing columns
+        insert_columns = ['username', 'email', 'hashed_password']
+        insert_values = [':username', ':email', ':hashed_password']
         
-        if 'two_factor_enabled' not in existing_columns:
-            db.execute(text("ALTER TABLE users ADD COLUMN two_factor_enabled BOOLEAN DEFAULT FALSE"))
-            logger.info("MINIMAL REGISTRATION: Added two_factor_enabled column")
+        if 'full_name' in existing_columns:
+            insert_columns.append('full_name')
+            insert_values.append(':full_name')
         
-        if 'created_at' not in existing_columns:
-            db.execute(text("ALTER TABLE users ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"))
-            logger.info("MINIMAL REGISTRATION: Added created_at column")
+        if 'preferences' in existing_columns:
+            insert_columns.append('preferences')
+            insert_values.append("'{}'")
         
-        if 'preferences' not in existing_columns:
-            db.execute(text("ALTER TABLE users ADD COLUMN preferences JSON DEFAULT '{}'"))
-            logger.info("MINIMAL REGISTRATION: Added preferences column")
-            
-        db.commit()
+        # Build safe RETURNING clause
+        return_columns = ['id', 'username', 'email']
+        if 'full_name' in existing_columns:
+            return_columns.append('full_name')
+        if 'created_at' in existing_columns:
+            return_columns.append('created_at')
+        if 'email_verified' in existing_columns:
+            return_columns.append('email_verified')
+        if 'two_factor_enabled' in existing_columns:
+            return_columns.append('two_factor_enabled')
         
-        # Insert user
-        result = db.execute(text("""
-            INSERT INTO users (username, email, hashed_password, full_name, preferences)
-            VALUES (:username, :email, :hashed_password, :full_name, '{}')
-            RETURNING id, username, email, full_name, created_at, email_verified, two_factor_enabled
-        """), {
+        # Build dynamic SQL
+        insert_sql = f"""
+            INSERT INTO users ({', '.join(insert_columns)})
+            VALUES ({', '.join(insert_values)})
+            RETURNING {', '.join(return_columns)}
+        """
+        
+        logger.info(f"MINIMAL REGISTRATION: Using SQL: {insert_sql}")
+        
+        # Insert user with safe parameters
+        params = {
             "username": username, 
             "email": email, 
-            "hashed_password": hashed_password,
-            "full_name": full_name or "User"
-        })
+            "hashed_password": hashed_password
+        }
+        if 'full_name' in existing_columns:
+            params["full_name"] = full_name or "User"
+        
+        result = db.execute(text(insert_sql), params)
         
         db.commit()
         new_user = result.fetchone()
@@ -275,18 +287,27 @@ def register_minimal(username: str = Body(...), email: str = Body(...), password
         
         logger.info(f"MINIMAL REGISTRATION: User {username} created with ID {new_user.id}")
         
+        # Build response with only available columns
+        user_response = {
+            "id": new_user.id,
+            "username": new_user.username,
+            "email": new_user.email
+        }
+        
+        # Add optional fields if they exist
+        if hasattr(new_user, 'full_name') and new_user.full_name is not None:
+            user_response["full_name"] = new_user.full_name
+        if hasattr(new_user, 'created_at') and new_user.created_at is not None:
+            user_response["created_at"] = str(new_user.created_at)
+        if hasattr(new_user, 'email_verified') and new_user.email_verified is not None:
+            user_response["email_verified"] = new_user.email_verified
+        if hasattr(new_user, 'two_factor_enabled') and new_user.two_factor_enabled is not None:
+            user_response["two_factor_enabled"] = new_user.two_factor_enabled
+        
         return {
             "status": "success",
             "message": "Registration successful",
-            "user": {
-                "id": new_user.id,
-                "username": new_user.username,
-                "email": new_user.email,
-                "full_name": new_user.full_name,
-                "created_at": str(new_user.created_at),
-                "email_verified": new_user.email_verified,
-                "two_factor_enabled": new_user.two_factor_enabled
-            }
+            "user": user_response
         }
         
     except Exception as e:
