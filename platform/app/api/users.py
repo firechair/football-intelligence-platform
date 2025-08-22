@@ -230,6 +230,33 @@ def register_minimal(username: str = Body(...), email: str = Body(...), password
         
         logger.info("MINIMAL REGISTRATION: Password hashed")
         
+        # First check what columns exist in the users table
+        schema_result = db.execute(text("""
+            SELECT column_name FROM information_schema.columns 
+            WHERE table_name = 'users' AND table_schema = 'public'
+        """))
+        existing_columns = [row.column_name for row in schema_result.fetchall()]
+        logger.info(f"MINIMAL REGISTRATION: Existing columns: {existing_columns}")
+        
+        # Add missing columns if they don't exist
+        if 'email_verified' not in existing_columns:
+            db.execute(text("ALTER TABLE users ADD COLUMN email_verified BOOLEAN DEFAULT FALSE"))
+            logger.info("MINIMAL REGISTRATION: Added email_verified column")
+        
+        if 'two_factor_enabled' not in existing_columns:
+            db.execute(text("ALTER TABLE users ADD COLUMN two_factor_enabled BOOLEAN DEFAULT FALSE"))
+            logger.info("MINIMAL REGISTRATION: Added two_factor_enabled column")
+        
+        if 'created_at' not in existing_columns:
+            db.execute(text("ALTER TABLE users ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"))
+            logger.info("MINIMAL REGISTRATION: Added created_at column")
+        
+        if 'preferences' not in existing_columns:
+            db.execute(text("ALTER TABLE users ADD COLUMN preferences JSON DEFAULT '{}'"))
+            logger.info("MINIMAL REGISTRATION: Added preferences column")
+            
+        db.commit()
+        
         # Insert user
         result = db.execute(text("""
             INSERT INTO users (username, email, hashed_password, full_name, preferences)
