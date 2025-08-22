@@ -320,35 +320,46 @@ def register_minimal(username: str = Body(...), email: str = Body(...), password
 def login_user(form_data: OAuth2PasswordRequestForm = Depends(), request: Request = None, db: Session = Depends(get_db)):
     """Login utente con controlli di sicurezza e supporto 2FA"""
     
-    # Sanitize input
-    username = security_service.sanitize_input(form_data.username, 100)
-    
-    # Authenticate with security checks
-    user = auth.authenticate_user(db, username, form_data.password, request)
-    
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    
-    # Check if 2FA is enabled for this user
-    if user.two_factor_enabled:
-        # Generate temporary token for 2FA verification
-        temp_token = two_factor_service.create_temp_token(user.id)
-        logger.info(f"2FA required for user: {user.username}")
+    try:
+        # Sanitize input
+        username = security_service.sanitize_input(form_data.username, 100)
         
-        return TempTokenResponse(
-            temp_token=temp_token,
-            message="Please provide your 2FA code to complete login"
+        # Authenticate with security checks
+        user = auth.authenticate_user(db, username, form_data.password, request)
+        
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect username or password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        # Check if 2FA is enabled for this user
+        if user.two_factor_enabled:
+            # Generate temporary token for 2FA verification
+            temp_token = two_factor_service.create_temp_token(user.id)
+            logger.info(f"2FA required for user: {user.username}")
+            
+            return TempTokenResponse(
+                temp_token=temp_token,
+                message="Please provide your 2FA code to complete login"
+            )
+        
+        # Normal login flow (no 2FA)
+        token_data = auth.create_token_pair(user.id, request, db)
+        logger.info(f"User logged in: {user.username} (session: {token_data.get('session_id', 'N/A')})")
+        
+        return token_data
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions (like 401, 429)
+        raise
+    except Exception as e:
+        logger.error(f"Login error for username '{form_data.username}': {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Login failed due to server error: {str(e)}"
         )
-    
-    # Normal login flow (no 2FA)
-    token_data = auth.create_token_pair(user.id, request, db)
-    logger.info(f"User logged in: {user.username} (session: {token_data.get('session_id', 'N/A')})")
-    
-    return token_data
 
 @router.get("/me", response_model=UserOut)
 def read_current_user(current_user: models.User = Depends(auth.get_current_user)):
