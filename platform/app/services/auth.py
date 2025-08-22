@@ -186,13 +186,42 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     # Get user using raw SQL to avoid ORM issues
     from sqlalchemy import text
     
-    user_data = db.execute(text("""
-        SELECT id, username, email, hashed_password, full_name, preferences,
-               created_at, email_verified, two_factor_enabled, two_factor_secret, backup_codes
-        FROM users 
-        WHERE id = :user_id
-        LIMIT 1
-    """), {"user_id": user_id}).fetchone()
+    # Try to select with 2FA columns, fall back to basic columns if they don't exist
+    try:
+        user_data = db.execute(text("""
+            SELECT id, username, email, hashed_password, full_name, preferences,
+                   created_at, email_verified, two_factor_enabled, two_factor_secret, backup_codes
+            FROM users 
+            WHERE id = :user_id
+            LIMIT 1
+        """), {"user_id": user_id}).fetchone()
+    except Exception as e:
+        if "does not exist" in str(e):
+            # Fall back to basic query without 2FA columns
+            user_data = db.execute(text("""
+                SELECT id, username, email, hashed_password, full_name, preferences, created_at
+                FROM users 
+                WHERE id = :user_id
+                LIMIT 1
+            """), {"user_id": user_id}).fetchone()
+            
+            # Extend user_data with default values for missing fields
+            if user_data:
+                user_data = type('Row', (), {
+                    'id': user_data.id,
+                    'username': user_data.username,
+                    'email': user_data.email,
+                    'hashed_password': user_data.hashed_password,
+                    'full_name': user_data.full_name,
+                    'preferences': user_data.preferences,
+                    'created_at': user_data.created_at,
+                    'email_verified': False,
+                    'two_factor_enabled': False,
+                    'two_factor_secret': None,
+                    'backup_codes': None
+                })()
+        else:
+            raise e
     
     if user_data is None:
         raise credentials_exception
@@ -236,13 +265,43 @@ def authenticate_user(db: Session, username: str, password: str, request: Reques
     # Find user by username or email (using raw SQL to avoid ORM issues)
     from sqlalchemy import text
     
-    user_data = db.execute(text("""
-        SELECT id, username, email, hashed_password, full_name, preferences,
-               created_at, email_verified, two_factor_enabled, two_factor_secret, backup_codes
-        FROM users 
-        WHERE username = :username OR email = :username
-        LIMIT 1
-    """), {"username": username}).fetchone()
+    # Try to select with 2FA columns, fall back to basic columns if they don't exist
+    try:
+        user_data = db.execute(text("""
+            SELECT id, username, email, hashed_password, full_name, preferences,
+                   created_at, email_verified, two_factor_enabled, two_factor_secret, backup_codes
+            FROM users 
+            WHERE username = :username OR email = :username
+            LIMIT 1
+        """), {"username": username}).fetchone()
+    except Exception as e:
+        if "does not exist" in str(e):
+            # Fall back to basic query without 2FA columns
+            logger.info(f"2FA columns missing, using basic query for user: {username}")
+            user_data = db.execute(text("""
+                SELECT id, username, email, hashed_password, full_name, preferences, created_at
+                FROM users 
+                WHERE username = :username OR email = :username
+                LIMIT 1
+            """), {"username": username}).fetchone()
+            
+            # Extend user_data with default values for missing fields
+            if user_data:
+                user_data = type('Row', (), {
+                    'id': user_data.id,
+                    'username': user_data.username,
+                    'email': user_data.email,
+                    'hashed_password': user_data.hashed_password,
+                    'full_name': user_data.full_name,
+                    'preferences': user_data.preferences,
+                    'created_at': user_data.created_at,
+                    'email_verified': False,
+                    'two_factor_enabled': False,
+                    'two_factor_secret': None,
+                    'backup_codes': None
+                })()
+        else:
+            raise e
     
     if not user_data or not verify_password(password, user_data.hashed_password):
         logger.info(f"Failed login attempt for: {username}")
