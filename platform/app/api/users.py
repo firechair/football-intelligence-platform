@@ -172,83 +172,100 @@ def register_user(user: UserCreate, request: Request, db: Session = Depends(get_
                     detail=f"Registration failed due to server error: {type(e).__name__}"
     )
 
-@router.post("/test-register")
-def test_register_minimal(username: str = Body(...), email: str = Body(...), password: str = Body(...)):
-    """Minimal registration test to isolate the issue"""
+@router.post("/register-minimal")
+def register_minimal(username: str = Body(...), email: str = Body(...), password: str = Body(...), full_name: str = Body(None)):
+    """Ultra minimal registration that bypasses ALL complex services"""
     try:
         import logging
         logging.basicConfig(level=logging.INFO)
         logger = logging.getLogger(__name__)
         
-        logger.info(f"TEST REGISTRATION: Starting with {username}, {email}")
+        logger.info(f"MINIMAL REGISTRATION: Starting with {username}, {email}")
         
-        # Test 1: Basic database connection
+        # Basic database connection
         from app.db.session import SessionLocal
         db = SessionLocal()
         
-        logger.info("TEST REGISTRATION: Database connection successful")
+        logger.info("MINIMAL REGISTRATION: Database connected")
         
-        # Test 2: Simple query
+        # Ensure table exists
         from sqlalchemy import text
-        result = db.execute(text("SELECT 1"))
-        test_result = result.scalar()
+        db.execute(text("""
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(50) NOT NULL UNIQUE,
+                email VARCHAR(120) NOT NULL UNIQUE,
+                hashed_password VARCHAR(128) NOT NULL,
+                full_name VARCHAR(120),
+                preferences JSON DEFAULT '{}',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                two_factor_enabled BOOLEAN DEFAULT FALSE,
+                two_factor_secret VARCHAR(255),
+                backup_codes JSON,
+                email_verified BOOLEAN DEFAULT FALSE,
+                email_verification_token VARCHAR(255),
+                email_verification_expires TIMESTAMP,
+                password_reset_token VARCHAR(255),
+                password_reset_expires TIMESTAMP
+            )
+        """))
+        db.commit()
         
-        logger.info(f"TEST REGISTRATION: Simple query result: {test_result}")
+        logger.info("MINIMAL REGISTRATION: Table ensured")
         
-        # Test 3: Check if users table exists
-        try:
-            count_result = db.execute(text("SELECT COUNT(*) FROM users"))
-            user_count = count_result.scalar()
-            logger.info(f"TEST REGISTRATION: Users table has {user_count} records")
-        except Exception as table_error:
-            logger.error(f"TEST REGISTRATION: Users table error: {table_error}")
-            # Try to create the table
-            db.execute(text("""
-                CREATE TABLE IF NOT EXISTS users (
-                    id SERIAL PRIMARY KEY,
-                    username VARCHAR(50) NOT NULL UNIQUE,
-                    email VARCHAR(120) NOT NULL UNIQUE,
-                    hashed_password VARCHAR(128) NOT NULL,
-                    full_name VARCHAR(120),
-                    preferences JSON DEFAULT '{}',
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    two_factor_enabled BOOLEAN DEFAULT FALSE,
-                    two_factor_secret VARCHAR(255),
-                    backup_codes JSON,
-                    email_verified BOOLEAN DEFAULT FALSE,
-                    email_verification_token VARCHAR(255),
-                    email_verification_expires TIMESTAMP,
-                    password_reset_token VARCHAR(255),
-                    password_reset_expires TIMESTAMP
-                )
-            """))
-            db.commit()
-            logger.info("TEST REGISTRATION: Users table created")
+        # Check if user exists
+        existing = db.execute(text("""
+            SELECT id FROM users WHERE username = :username OR email = :email LIMIT 1
+        """), {"username": username, "email": email}).fetchone()
         
-        # Test 4: Simple password hashing
+        if existing:
+            return {"status": "error", "message": "User already exists"}
+        
+        logger.info("MINIMAL REGISTRATION: User check passed")
+        
+        # Hash password with basic bcrypt
         from passlib.context import CryptContext
         pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
         hashed_password = pwd_context.hash(password)
         
-        logger.info("TEST REGISTRATION: Password hashed successfully")
+        logger.info("MINIMAL REGISTRATION: Password hashed")
         
-        # Test 5: Create user record
-        db.execute(text("""
+        # Insert user
+        result = db.execute(text("""
             INSERT INTO users (username, email, hashed_password, full_name, preferences)
-            VALUES (:username, :email, :hashed_password, 'Test User', '{}')
-        """), {"username": username, "email": email, "hashed_password": hashed_password})
+            VALUES (:username, :email, :hashed_password, :full_name, '{}')
+            RETURNING id, username, email, full_name, created_at, email_verified, two_factor_enabled
+        """), {
+            "username": username, 
+            "email": email, 
+            "hashed_password": hashed_password,
+            "full_name": full_name or "User"
+        })
         
         db.commit()
+        new_user = result.fetchone()
         db.close()
         
-        logger.info("TEST REGISTRATION: User created successfully")
+        logger.info(f"MINIMAL REGISTRATION: User {username} created with ID {new_user.id}")
         
-        return {"status": "success", "message": f"Test user {username} created successfully"}
+        return {
+            "status": "success",
+            "message": "Registration successful",
+            "user": {
+                "id": new_user.id,
+                "username": new_user.username,
+                "email": new_user.email,
+                "full_name": new_user.full_name,
+                "created_at": str(new_user.created_at),
+                "email_verified": new_user.email_verified,
+                "two_factor_enabled": new_user.two_factor_enabled
+            }
+        }
         
     except Exception as e:
         import traceback
-        logger.error(f"TEST REGISTRATION ERROR: {type(e).__name__}: {str(e)}")
-        logger.error(f"TEST REGISTRATION TRACEBACK: {traceback.format_exc()}")
+        logger.error(f"MINIMAL REGISTRATION ERROR: {type(e).__name__}: {str(e)}")
+        logger.error(f"MINIMAL REGISTRATION TRACEBACK: {traceback.format_exc()}")
         return {"status": "error", "error": str(e), "type": type(e).__name__}
 
 @router.post("/login")
