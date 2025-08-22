@@ -9,6 +9,7 @@ from app.services.security import security_service
 from app.services.session_manager import session_manager
 from app.services.two_factor_auth import two_factor_service
 from typing import List, Optional
+import json
 from app.models.token import Token, TokenRefresh, TokenResponse
 from app.models.session import SessionOut, SessionTerminate
 from app.models.two_factor import (
@@ -90,33 +91,61 @@ def register_user(user: UserCreate, request: Request, db: Session = Depends(get_
                 detail={"password_errors": password_validation['errors']}
             )
         
-        # Check if user already exists
+        # Check if user already exists (using raw SQL to avoid ORM issues)
         logger.info("Checking if user already exists...")
-        db_user = db.query(models.User).filter(
-            (models.User.username == username) | (models.User.email == email)
-        ).first()
+        from sqlalchemy import text
         
-        if db_user:
-            if db_user.username == username:
+        existing_user = db.execute(text("""
+            SELECT username, email FROM users 
+            WHERE username = :username OR email = :email 
+            LIMIT 1
+        """), {"username": username, "email": email}).fetchone()
+        
+        if existing_user:
+            if existing_user.username == username:
                 raise HTTPException(status_code=400, detail="Username already registered")
             else:
                 raise HTTPException(status_code=400, detail="Email already registered")
         
-        # Create new user
+        # Create new user (using raw SQL like the working test endpoint)
         logger.info("Creating new user...")
         hashed_password = auth.get_password_hash(user.password)
-        new_user = models.User(
-            username=username,
-            email=email,
-            hashed_password=hashed_password,
-            full_name=full_name,
-            preferences=user.preferences or {}
-        )
         
         logger.info("Saving user to database...")
-        db.add(new_user)
+        
+        # Insert user using raw SQL 
+        result = db.execute(text("""
+            INSERT INTO users (username, email, hashed_password, full_name, preferences)
+            VALUES (:username, :email, :hashed_password, :full_name, :preferences)
+            RETURNING id, username, email, full_name, preferences, created_at, 
+                     email_verified, two_factor_enabled
+        """), {
+            "username": username,
+            "email": email, 
+            "hashed_password": hashed_password,
+            "full_name": full_name,
+            "preferences": json.dumps(user.preferences or {})
+        })
+        
         db.commit()
-        db.refresh(new_user)
+        
+        # Get the created user data
+        new_user_data = result.fetchone()
+        logger.info(f"User created with ID: {new_user_data.id}")
+        
+        # Create a user response object manually
+        class UserResponse:
+            def __init__(self, row):
+                self.id = row.id
+                self.username = row.username  
+                self.email = row.email
+                self.full_name = row.full_name
+                self.preferences = json.loads(row.preferences) if row.preferences else {}
+                self.created_at = row.created_at
+                self.email_verified = row.email_verified or False
+                self.two_factor_enabled = row.two_factor_enabled or False
+        
+        new_user = UserResponse(new_user_data)
         
         # Send email verification email (temporarily disabled to prevent crashes)
         logger.info("Attempting to send verification email...")
