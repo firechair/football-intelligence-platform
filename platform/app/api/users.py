@@ -108,13 +108,19 @@ def register_user(user: UserCreate, request: Request, db: Session = Depends(get_
     db.commit()
     db.refresh(new_user)
     
-    # Send email verification email
+    # Send email verification email (temporarily disabled to prevent crashes)
     try:
-        success, message = email_verification_service.send_verification_email(db, new_user)
-        if not success:
-            logger.warning(f"Failed to send verification email to {new_user.email}: {message}")
+        # Check if email service is configured before attempting to send
+        from app.core.config import SENDGRID_API_KEY
+        if SENDGRID_API_KEY:
+            success, message = email_verification_service.send_verification_email(db, new_user)
+            if not success:
+                logger.warning(f"Failed to send verification email to {new_user.email}: {message}")
+        else:
+            logger.info(f"Email verification disabled - no SENDGRID_API_KEY configured")
     except Exception as e:
         logger.error(f"Error sending verification email to {new_user.email}: {str(e)}")
+        # Continue registration even if email fails
     
     logger.info(f"New user registered: {username}")
     return new_user
