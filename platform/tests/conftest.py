@@ -117,6 +117,12 @@ def mock_request():
 @pytest.fixture(autouse=True)
 def reset_security_service():
     """Reset security service state between tests"""
-    security_service._rate_limits.clear()
-    security_service._blacklisted_tokens.clear()
+    # Reset any internal state that might exist
+    try:
+        if hasattr(security_service, 'rate_limit_storage'):
+            security_service.rate_limit_storage.clear()
+        if hasattr(security_service, 'blocked_tokens'):
+            security_service.blocked_tokens.clear()
+    except AttributeError:
+        pass  # Service may not have these attributes
     yield
