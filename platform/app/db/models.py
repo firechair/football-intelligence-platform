@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, func, JSON, Boolean
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, func, JSON, Boolean, DECIMAL
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
@@ -65,4 +65,63 @@ class Session(Base):
     termination_reason = Column(String(100), nullable=True)
     
     # Relationship
-    user = relationship("User", backref="sessions") 
+    user = relationship("User", backref="sessions")
+
+# New models for intelligent odds and bookmaker analytics
+
+class BookmakerStats(Base):
+    __tablename__ = "bookmaker_stats"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    bookmaker = Column(String(100), nullable=False, index=True)
+    sport = Column(String(50), nullable=False, index=True)
+    league = Column(String(200), nullable=True)
+    market_type = Column(String(100), nullable=False, index=True)
+    best_odds_count = Column(Integer, default=0)
+    total_markets = Column(Integer, default=0)
+    win_percentage = Column(DECIMAL(5,2), nullable=True)
+    average_margin = Column(DECIMAL(5,3), nullable=True)
+    consistency_score = Column(DECIMAL(3,2), nullable=True)
+    last_updated = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+class OddsHistory(Base):
+    __tablename__ = "odds_history"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    fixture_id = Column(Integer, nullable=False, index=True)
+    market_name = Column(String(100), nullable=False)
+    bookmaker = Column(String(100), nullable=False, index=True)
+    odd_value = Column(DECIMAL(8,3), nullable=False)
+    timestamp = Column(DateTime, server_default=func.now())
+    is_best_odd = Column(Boolean, default=False, index=True)
+
+class UserBettingPreferences(Base):
+    __tablename__ = "user_betting_preferences"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    preferred_sports = Column(JSON, nullable=True)
+    preferred_markets = Column(JSON, nullable=True)
+    preferred_bookmakers = Column(JSON, nullable=True)
+    risk_tolerance = Column(String(20), nullable=True)  # 'low', 'medium', 'high'
+    avg_stake = Column(DECIMAL(10,2), nullable=True)
+    success_rate = Column(DECIMAL(5,2), nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    
+    # Relationship
+    user = relationship("User", backref="betting_preferences")
+
+class SmartAlerts(Base):
+    __tablename__ = "smart_alerts"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    alert_type = Column(String(50), nullable=False)  # 'value_bet', 'odds_drop', 'bookmaker_special'
+    criteria = Column(JSON, nullable=False)
+    is_active = Column(Boolean, default=True, index=True)
+    last_triggered = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    
+    # Relationship
+    user = relationship("User", backref="smart_alerts") 
