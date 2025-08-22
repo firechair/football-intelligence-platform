@@ -147,20 +147,11 @@ def register_user(user: UserCreate, request: Request, db: Session = Depends(get_
         
         new_user = UserResponse(new_user_data)
         
-        # Send email verification email (temporarily disabled to prevent crashes)
-        logger.info("Attempting to send verification email...")
-        try:
-            # Check if email service is configured before attempting to send
-            from app.core.config import SENDGRID_API_KEY
-            if SENDGRID_API_KEY:
-                success, message = email_verification_service.send_verification_email(db, new_user)
-                if not success:
-                    logger.warning(f"Failed to send verification email to {new_user.email}: {message}")
-            else:
-                logger.info(f"Email verification disabled - no SENDGRID_API_KEY configured")
-        except Exception as e:
-            logger.error(f"Error sending verification email to {new_user.email}: {str(e)}")
-            # Continue registration even if email fails
+        # Temporarily disable email verification until we fix the service
+        logger.info("Email verification temporarily disabled during registration fix")
+        # The email verification service expects SQLAlchemy ORM User object
+        # but we're now using raw SQL and custom UserResponse object
+        # TODO: Fix email verification service to work with raw SQL approach
         
         logger.info(f"New user registered successfully: {username}")
         return new_user
