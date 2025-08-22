@@ -64,11 +64,11 @@ class SecurityService:
         else:
             score += 1
         
-        # Common patterns check
-        common_patterns = ['123456', 'password', 'qwerty', 'abc123', '111111']
-        if any(pattern in password.lower() for pattern in common_patterns):
-            errors.append("Password contiene sequenze comuni troppo semplici")
-            score = max(0, score - 2)
+        # Common patterns check - only very weak patterns
+        weak_patterns = ['123456', 'qwerty', '111111', 'aaaaaa']
+        if any(pattern in password.lower() for pattern in weak_patterns):
+            errors.append("Password contiene sequenze troppo semplici")
+            score = max(0, score - 1)
         
         # Strength levels
         if score >= 6:
