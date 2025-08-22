@@ -9,6 +9,7 @@ from app.db import session as db_session, models
 from app.services.security import security_service
 from app.services.session_manager import session_manager
 import os
+import json
 import logging
 
 logger = logging.getLogger(__name__)
@@ -182,15 +183,38 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     except (JWTError, ValueError):
         raise credentials_exception
     
-    user = db.query(models.User).filter(models.User.id == user_id).first()
-    if user is None:
+    # Get user using raw SQL to avoid ORM issues
+    from sqlalchemy import text
+    
+    user_data = db.execute(text("""
+        SELECT id, username, email, hashed_password, full_name, preferences,
+               created_at, email_verified, two_factor_enabled, two_factor_secret, backup_codes
+        FROM users 
+        WHERE id = :user_id
+        LIMIT 1
+    """), {"user_id": user_id}).fetchone()
+    
+    if user_data is None:
         raise credentials_exception
     
-    # Attach session info to user object for convenience
-    if hasattr(user, '__dict__') and session_id:
-        user._session_id = session_id
+    # Create user-like object
+    class UserResponse:
+        def __init__(self, row):
+            self.id = row.id
+            self.username = row.username  
+            self.email = row.email
+            self.hashed_password = row.hashed_password
+            self.full_name = row.full_name
+            self.preferences = json.loads(row.preferences) if row.preferences else {}
+            self.created_at = row.created_at
+            self.email_verified = row.email_verified or False
+            self.two_factor_enabled = row.two_factor_enabled or False
+            self.two_factor_secret = row.two_factor_secret
+            self.backup_codes = json.loads(row.backup_codes) if row.backup_codes else []
+            # Attach session info for convenience
+            self._session_id = session_id
     
-    return user
+    return UserResponse(user_data)
 
 def authenticate_user(db: Session, username: str, password: str, request: Request = None) -> Optional[models.User]:
     """Autentica utente con controlli di sicurezza"""
@@ -209,17 +233,39 @@ def authenticate_user(db: Session, username: str, password: str, request: Reques
         
         security_service.record_attempt(rate_key)
     
-    # Find user by username or email
-    user = db.query(models.User).filter(
-        (models.User.username == username) | (models.User.email == username)
-    ).first()
+    # Find user by username or email (using raw SQL to avoid ORM issues)
+    from sqlalchemy import text
     
-    if not user or not verify_password(password, user.hashed_password):
+    user_data = db.execute(text("""
+        SELECT id, username, email, hashed_password, full_name, preferences,
+               created_at, email_verified, two_factor_enabled, two_factor_secret, backup_codes
+        FROM users 
+        WHERE username = :username OR email = :username
+        LIMIT 1
+    """), {"username": username}).fetchone()
+    
+    if not user_data or not verify_password(password, user_data.hashed_password):
         logger.info(f"Failed login attempt for: {username}")
         return None
     
     logger.info(f"Successful login for user: {username}")
-    return user
+    
+    # Create a user-like object that mimics models.User
+    class UserResponse:
+        def __init__(self, row):
+            self.id = row.id
+            self.username = row.username  
+            self.email = row.email
+            self.hashed_password = row.hashed_password
+            self.full_name = row.full_name
+            self.preferences = json.loads(row.preferences) if row.preferences else {}
+            self.created_at = row.created_at
+            self.email_verified = row.email_verified or False
+            self.two_factor_enabled = row.two_factor_enabled or False
+            self.two_factor_secret = row.two_factor_secret
+            self.backup_codes = json.loads(row.backup_codes) if row.backup_codes else []
+    
+    return UserResponse(user_data)
 
 def logout_user(token: str, db: Session = None, session_id: str = None, user_id: int = None, logout_all: bool = False):
     """Logout utente aggiungendo token alla blacklist e terminando sessioni"""
