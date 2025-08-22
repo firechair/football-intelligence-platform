@@ -43,87 +43,114 @@ def get_db():
 def register_user(user: UserCreate, request: Request, db: Session = Depends(get_db)):
     """Registra nuovo utente con controlli di sicurezza"""
     
-    # Rate limiting per registrazione
-    client_id = security_service.get_client_identifier(request)
-    rate_key = f"register:{client_id}"
-    
-    if security_service.is_rate_limited(rate_key, max_attempts=3, window_minutes=60):
-        logger.warning(f"Rate limit exceeded for registration from: {client_id}")
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many registration attempts. Try again later."
-        )
-    
-    security_service.record_attempt(rate_key)
-    
-    # Sanitize input
-    username = security_service.sanitize_input(user.username, 50)
-    email = security_service.sanitize_input(user.email, 100)
-    full_name = security_service.sanitize_input(user.full_name or "", 100) if user.full_name else None
-    
-    # Validate input formats
-    username_validation = security_service.validate_username_format(username)
-    if not username_validation['valid']:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"errors": username_validation['errors']}
-        )
-    
-    if not security_service.validate_email_format(email):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid email format"
-        )
-    
-    # Validate password strength
-    password_validation = auth.validate_password_policy(user.password)
-    if not password_validation['valid']:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"password_errors": password_validation['errors']}
-        )
-    
-    # Check if user already exists
-    db_user = db.query(models.User).filter(
-        (models.User.username == username) | (models.User.email == email)
-    ).first()
-    
-    if db_user:
-        if db_user.username == username:
-            raise HTTPException(status_code=400, detail="Username already registered")
-        else:
-            raise HTTPException(status_code=400, detail="Email already registered")
-    
-    # Create new user
-    hashed_password = auth.get_password_hash(user.password)
-    new_user = models.User(
-        username=username,
-        email=email,
-        hashed_password=hashed_password,
-        full_name=full_name,
-        preferences=user.preferences or {}
-    )
-    
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-    
-    # Send email verification email (temporarily disabled to prevent crashes)
     try:
-        # Check if email service is configured before attempting to send
-        from app.core.config import SENDGRID_API_KEY
-        if SENDGRID_API_KEY:
-            success, message = email_verification_service.send_verification_email(db, new_user)
-            if not success:
-                logger.warning(f"Failed to send verification email to {new_user.email}: {message}")
-        else:
-            logger.info(f"Email verification disabled - no SENDGRID_API_KEY configured")
+        logger.info("Registration attempt started")
+        
+        # Skip rate limiting temporarily to isolate the issue
+        # Rate limiting per registrazione
+        # client_id = security_service.get_client_identifier(request)
+        # rate_key = f"register:{client_id}"
+        
+        # if security_service.is_rate_limited(rate_key, max_attempts=3, window_minutes=60):
+        #     logger.warning(f"Rate limit exceeded for registration from: {client_id}")
+        #     raise HTTPException(
+        #         status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        #         detail="Too many registration attempts. Try again later."
+        #     )
+        
+        # security_service.record_attempt(rate_key)
+        
+        # Sanitize input
+        logger.info("Sanitizing input...")
+        username = security_service.sanitize_input(user.username, 50)
+        email = security_service.sanitize_input(user.email, 100)
+        full_name = security_service.sanitize_input(user.full_name or "", 100) if user.full_name else None
+        
+        # Validate input formats
+        logger.info("Validating input formats...")
+        username_validation = security_service.validate_username_format(username)
+        if not username_validation['valid']:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"errors": username_validation['errors']}
+            )
+        
+        if not security_service.validate_email_format(email):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid email format"
+            )
+        
+        # Validate password strength
+        logger.info("Validating password strength...")
+        password_validation = auth.validate_password_policy(user.password)
+        if not password_validation['valid']:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"password_errors": password_validation['errors']}
+            )
+        
+        # Check if user already exists
+        logger.info("Checking if user already exists...")
+        db_user = db.query(models.User).filter(
+            (models.User.username == username) | (models.User.email == email)
+        ).first()
+        
+        if db_user:
+            if db_user.username == username:
+                raise HTTPException(status_code=400, detail="Username already registered")
+            else:
+                raise HTTPException(status_code=400, detail="Email already registered")
+        
+        # Create new user
+        logger.info("Creating new user...")
+        hashed_password = auth.get_password_hash(user.password)
+        new_user = models.User(
+            username=username,
+            email=email,
+            hashed_password=hashed_password,
+            full_name=full_name,
+            preferences=user.preferences or {}
+        )
+        
+        logger.info("Saving user to database...")
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+        
+        # Send email verification email (temporarily disabled to prevent crashes)
+        logger.info("Attempting to send verification email...")
+        try:
+            # Check if email service is configured before attempting to send
+            from app.core.config import SENDGRID_API_KEY
+            if SENDGRID_API_KEY:
+                success, message = email_verification_service.send_verification_email(db, new_user)
+                if not success:
+                    logger.warning(f"Failed to send verification email to {new_user.email}: {message}")
+            else:
+                logger.info(f"Email verification disabled - no SENDGRID_API_KEY configured")
+        except Exception as e:
+            logger.error(f"Error sending verification email to {new_user.email}: {str(e)}")
+            # Continue registration even if email fails
+        
+        logger.info(f"New user registered successfully: {username}")
+        return new_user
+        
+    except HTTPException as http_exc:
+        # Re-raise HTTP exceptions (validation errors, etc.)
+        logger.warning(f"Registration validation error: {http_exc.detail}")
+        raise http_exc
     except Exception as e:
-        logger.error(f"Error sending verification email to {new_user.email}: {str(e)}")
-        # Continue registration even if email fails
-    
-    logger.info(f"New user registered: {username}")
-    return new_user
+        # Log the actual error that's causing the 500
+        logger.error(f"REGISTRATION CRASH: {type(e).__name__}: {str(e)}")
+        import traceback
+        logger.error(f"REGISTRATION TRACEBACK: {traceback.format_exc()}")
+        
+        # Return a user-friendly error instead of crashing
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Registration failed due to server error: {type(e).__name__}"
+        )
 
 @router.post("/login")
 def login_user(form_data: OAuth2PasswordRequestForm = Depends(), request: Request = None, db: Session = Depends(get_db)):
