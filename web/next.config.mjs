@@ -22,8 +22,8 @@ const nextConfig = {
   
   // API routes configuration
   async rewrites() {
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || '';
-    if (!backendUrl) return [];
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://example.invalid';
+    
     return [
       {
         source: '/api/:path*',
