@@ -435,3 +435,4 @@ class BookmakerAnalyticsService:
 
 # Global analytics service instance
 bookmaker_analytics = BookmakerAnalyticsService()
+

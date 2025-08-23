@@ -517,3 +517,4 @@ class SmartAlertEngine:
 
 # Global alert engine instance
 alert_engine = SmartAlertEngine()
+
