@@ -22,7 +22,10 @@ const nextConfig = {
   
   // API routes configuration
   async rewrites() {
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://example.invalid';
+    // Use local backend in development, production URL in production
+    const backendUrl = process.env.NODE_ENV === 'development' 
+      ? 'http://localhost:8000'
+      : (process.env.NEXT_PUBLIC_BACKEND_URL || 'https://example.invalid');
     
     return [
       {
@@ -35,6 +38,36 @@ const nextConfig = {
         destination: '/fip-logo.png',
       },
     ]
+  },
+
+  // Server configuration for better proxy handling
+  serverRuntimeConfig: {
+    // Increase timeout for proxy requests
+    proxyTimeout: 90000, // 90 seconds for slow endpoints
+  },
+
+  // Custom webpack configuration for better proxy handling
+  webpack: (config, { dev }) => {
+    if (dev) {
+      // Increase timeout for development proxy
+      config.devServer = {
+        ...config.devServer,
+        proxy: {
+          '/api/**': {
+            target: 'http://localhost:8000',
+            changeOrigin: true,
+            timeout: 90000, // 90 seconds
+            proxyTimeout: 90000,
+          }
+        }
+      };
+    }
+    return config;
+  },
+  
+  // HTTP agent configuration
+  httpAgentOptions: {
+    keepAlive: true,
   },
   
   // Performance optimizations (temporarily disabled)
@@ -67,4 +100,4 @@ const nextConfig = {
   },
 }
 
-export default nextConfig 
+export default nextConfig
