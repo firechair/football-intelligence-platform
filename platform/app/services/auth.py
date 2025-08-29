@@ -50,9 +50,11 @@ def create_refresh_token(data: dict) -> str:
     to_encode.update({
         "exp": expire,
         "iat": datetime.now(timezone.utc),
-        "type": "refresh",
-        "jti": security_service.generate_secure_token(16)  # JWT ID per blacklisting
+        "type": "refresh"
     })
+    # Use provided JTI or generate new one
+    if "jti" not in to_encode:
+        to_encode["jti"] = security_service.generate_secure_token(16)
     if "sub" in to_encode:
         to_encode["sub"] = str(to_encode["sub"])
     encoded_jwt = jwt.encode(to_encode, REFRESH_SECRET_KEY, algorithm=ALGORITHM)
@@ -146,7 +148,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     try:
         # Check token blacklist
         if security_service.is_token_blacklisted(token):
-            logger.warning("Attempt to use blacklisted token")
+            logger.warning(f"Attempt to use blacklisted token: {token[:20]}...")
             raise credentials_exception
         
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -170,7 +172,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
             if not session_info or not session_manager.is_session_active(
                 db.query(models.Session).filter(models.Session.session_id == session_id).first()
             ):
-                logger.warning(f"Access attempt with expired session {session_id}")
+                logger.warning(f"Access attempt with expired/invalid session {session_id} for user {user_id}")
                 raise credentials_exception
             
             # Update activity
@@ -180,7 +182,8 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         if session_id and security_service.generate_secure_token(1) == "1":  # 1/16 chance
             session_manager.cleanup_expired_sessions(db)
         
-    except (JWTError, ValueError):
+    except (JWTError, ValueError) as e:
+        logger.warning(f"JWT validation failed: {str(e)}")
         raise credentials_exception
     
     # Get user using raw SQL to avoid ORM issues
@@ -224,6 +227,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
             raise e
     
     if user_data is None:
+        logger.warning(f"User not found in database for user_id: {user_id}")
         raise credentials_exception
     
     # Create user-like object
@@ -348,4 +352,4 @@ def logout_user(token: str, db: Session = None, session_id: str = None, user_id:
 
 def validate_password_policy(password: str) -> Dict[str, Any]:
     """Valida password secondo policy di sicurezza"""
-    return security_service.validate_password_strength(password) 
+    return security_service.validate_password_strength(password)

@@ -17,13 +17,13 @@ class SecurityService:
         self.rate_limit_storage: Dict[str, Dict[str, Any]] = {}
         self.blocked_tokens: set = set()
         
-        # Password policy
+        # Password policy - made less restrictive
         self.password_policy = {
-            'min_length': 8,
-            'require_uppercase': True,
+            'min_length': 6,
+            'require_uppercase': False,  # Made optional
             'require_lowercase': True,
             'require_digits': True,
-            'require_special_chars': True,
+            'require_special_chars': False,  # Made optional
             'max_length': 128
         }
     

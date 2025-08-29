@@ -11,6 +11,7 @@ from sqlalchemy import and_
 from app.db.models import User
 from app.services.email_service import email_service
 from app.services.security import security_service
+from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 
@@ -25,13 +26,14 @@ class EmailVerificationService:
         """Generate a secure email verification token."""
         return secrets.token_urlsafe(32)
     
-    def send_verification_email(self, db: Session, user: User) -> Tuple[bool, str]:
+    def send_verification_email(self, db: Session, user, user_id: int = None) -> Tuple[bool, str]:
         """
         Send email verification email to user.
         
         Args:
             db: Database session
-            user: User object
+            user: User object (ORM) or user data dict/object (raw SQL)
+            user_id: User ID (required for raw SQL approach)
             
         Returns:
             Tuple of (success, message)
@@ -41,31 +43,67 @@ class EmailVerificationService:
             verification_token = self.generate_verification_token()
             expires_at = datetime.utcnow() + timedelta(hours=self.token_expiry_hours)
             
-            # Update user with verification token
-            user.email_verification_token = verification_token
-            user.email_verification_expires = expires_at
-            db.commit()
+            # Handle both ORM and raw SQL approaches
+            if hasattr(user, 'id') and hasattr(user, 'email'):  # ORM User object
+                # Update user with verification token
+                user.email_verification_token = verification_token
+                user.email_verification_expires = expires_at
+                db.commit()
+                
+                user_email = user.email
+                username = user.username
+                user_id_val = user.id
+            else:  # Raw SQL approach - user is a dict-like object
+                # Update user with verification token using raw SQL
+                update_query = text("""
+                    UPDATE users 
+                    SET email_verification_token = :token, 
+                        email_verification_expires = :expires_at
+                    WHERE id = :user_id
+                """)
+                
+                db.execute(update_query, {
+                    'token': verification_token,
+                    'expires_at': expires_at,
+                    'user_id': user_id or getattr(user, 'id', None)
+                })
+                db.commit()
+                
+                user_email = getattr(user, 'email', None)
+                username = getattr(user, 'username', None)
+                user_id_val = user_id or getattr(user, 'id', None)
             
             # Send verification email
             email_sent = email_service.send_email_verification_email(
-                to_email=user.email,
-                username=user.username,
+                to_email=user_email,
+                username=username,
                 verification_token=verification_token
             )
             
             if email_sent:
-                logger.info(f"Email verification sent to {user.email}")
+                logger.info(f"Email verification sent to {user_email}")
                 return True, "Verification email sent successfully."
             else:
-                logger.error(f"Failed to send verification email to {user.email}")
+                logger.error(f"Failed to send verification email to {user_email}")
                 # Clear the token if email failed
-                user.email_verification_token = None
-                user.email_verification_expires = None
-                db.commit()
+                if hasattr(user, 'id') and hasattr(user, 'email'):  # ORM
+                    user.email_verification_token = None
+                    user.email_verification_expires = None
+                    db.commit()
+                else:  # Raw SQL
+                    clear_query = text("""
+                        UPDATE users 
+                        SET email_verification_token = NULL, 
+                            email_verification_expires = NULL
+                        WHERE id = :user_id
+                    """)
+                    db.execute(clear_query, {'user_id': user_id_val})
+                    db.commit()
+                
                 return False, "Failed to send verification email. Please try again later."
                 
         except Exception as e:
-            logger.error(f"Error sending verification email for user {user.id}: {str(e)}")
+            logger.error(f"Error sending verification email for user {user_id_val if 'user_id_val' in locals() else 'unknown'}: {str(e)}")
             db.rollback()
             return False, "An error occurred. Please try again later."
     

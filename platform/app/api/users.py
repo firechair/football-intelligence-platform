@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Body, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from app.models.user import UserCreate, UserOut
 from app.db import session as db_session, models
 from app.services import auth
@@ -43,6 +44,9 @@ def get_db():
 @router.post("/register", response_model=UserOut)
 def register_user(user: UserCreate, request: Request, db: Session = Depends(get_db)):
     """Registra nuovo utente con controlli di sicurezza"""
+    
+    print(f"[REGISTRATION DEBUG] Function called with user: {user.username if user else 'None'}")
+    logger.info(f"[REGISTRATION DEBUG] Function called with user: {user.username if user else 'None'}")
     
     try:
         logger.info("Registration attempt started")
@@ -93,13 +97,17 @@ def register_user(user: UserCreate, request: Request, db: Session = Depends(get_
         
         # Check if user already exists (using raw SQL to avoid ORM issues)
         logger.info("Checking if user already exists...")
-        from sqlalchemy import text
         
-        existing_user = db.execute(text("""
-            SELECT username, email FROM users 
-            WHERE username = :username OR email = :email 
-            LIMIT 1
-        """), {"username": username, "email": email}).fetchone()
+        try:
+            existing_user = db.execute(text("""
+                SELECT username, email FROM users 
+                WHERE username = :username OR email = :email 
+                LIMIT 1
+            """), {"username": username, "email": email}).fetchone()
+            logger.info(f"Existing user check completed. Found: {existing_user is not None}")
+        except Exception as e:
+            logger.error(f"Error checking existing user: {type(e).__name__}: {str(e)}")
+            raise
         
         if existing_user:
             if existing_user.username == username:
@@ -113,24 +121,35 @@ def register_user(user: UserCreate, request: Request, db: Session = Depends(get_
         
         logger.info("Saving user to database...")
         
-        # Insert user using raw SQL 
-        result = db.execute(text("""
-            INSERT INTO users (username, email, hashed_password, full_name, preferences)
-            VALUES (:username, :email, :hashed_password, :full_name, :preferences)
-            RETURNING id, username, email, full_name, preferences, created_at, 
-                     email_verified, two_factor_enabled
-        """), {
-            "username": username,
-            "email": email, 
-            "hashed_password": hashed_password,
-            "full_name": full_name,
-            "preferences": json.dumps(user.preferences or {})
-        })
+        # Insert user using raw SQL with proper transaction handling
+        try:
+            logger.info("Executing INSERT query...")
+            result = db.execute(text("""
+                INSERT INTO users (username, email, hashed_password, full_name, preferences)
+                VALUES (:username, :email, :hashed_password, :full_name, :preferences)
+                RETURNING id, username, email, full_name, preferences, created_at, 
+                         email_verified, two_factor_enabled
+            """), {
+                "username": username,
+                "email": email, 
+                "hashed_password": hashed_password,
+                "full_name": full_name,
+                "preferences": json.dumps(user.preferences or {})
+            })
+            logger.info("INSERT query executed successfully")
+            
+            # Get the result before committing
+            new_user_data = result.fetchone()
+            
+            logger.info("Committing transaction...")
+            db.commit()
+            logger.info("Transaction committed successfully")
+        except Exception as e:
+            logger.error(f"Error during INSERT/COMMIT: {type(e).__name__}: {str(e)}")
+            db.rollback()
+            raise
         
-        db.commit()
-        
-        # Get the created user data
-        new_user_data = result.fetchone()
+        # User data already fetched before commit
         logger.info(f"User created with ID: {new_user_data.id}")
         
         # Create a user response object manually
@@ -147,11 +166,19 @@ def register_user(user: UserCreate, request: Request, db: Session = Depends(get_
         
         new_user = UserResponse(new_user_data)
         
-        # Temporarily disable email verification until we fix the service
-        logger.info("Email verification temporarily disabled during registration fix")
-        # The email verification service expects SQLAlchemy ORM User object
-        # but we're now using raw SQL and custom UserResponse object
-        # TODO: Fix email verification service to work with raw SQL approach
+        # Send email verification
+        try:
+            from app.services.email_verification import email_verification_service
+            success, message = email_verification_service.send_verification_email(
+                db, new_user, new_user.id
+            )
+            if success:
+                logger.info(f"Verification email sent to {new_user.email}")
+            else:
+                logger.warning(f"Failed to send verification email: {message}")
+        except Exception as e:
+            logger.error(f"Error sending verification email: {str(e)}")
+            # Don't fail registration if email sending fails
         
         logger.info(f"New user registered successfully: {username}")
         return new_user
@@ -169,8 +196,8 @@ def register_user(user: UserCreate, request: Request, db: Session = Depends(get_
         # Return a user-friendly error instead of crashing
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"Registration failed due to server error: {type(e).__name__}"
-    )
+            detail=f"Registration failed due to server error: {type(e).__name__}"
+        )
 
 @router.post("/register-minimal")
 def register_minimal(username: str = Body(...), email: str = Body(...), password: str = Body(...), full_name: str = Body(None)):
@@ -423,7 +450,7 @@ def logout_user_endpoint(
     token: str = Depends(auth.oauth2_scheme),
     current_user: models.User = Depends(auth.get_current_user),
     db: Session = Depends(get_db),
-    logout_all: bool = Body(False, embed=True)
+    logout_all: Optional[bool] = Body(False, embed=True)
 ):
     """Logout utente e blacklist del token"""
     session_id = getattr(current_user, '_session_id', None)
@@ -460,7 +487,13 @@ def get_user_sessions(
     include_inactive: bool = False
 ):
     """Ottieni tutte le sessioni attive dell'utente"""
-    sessions = session_manager.get_user_sessions(db, current_user.id, include_inactive)
+    try:
+        logger.info(f"Getting sessions for user {current_user.id}")
+        sessions = session_manager.get_user_sessions(db, current_user.id, include_inactive)
+        logger.info(f"Found {len(sessions)} sessions for user {current_user.id}")
+    except Exception as e:
+        logger.error(f"Error getting sessions for user {current_user.id}: {str(e)}")
+        raise
     
     # Mark current session if available
     current_session_id = getattr(current_user, '_session_id', None)
@@ -849,4 +882,4 @@ def get_email_verification_status(current_user: models.User = Depends(auth.get_c
         email_verified=current_user.email_verified,
         email=current_user.email,
         verification_pending=not current_user.email_verified and current_user.email_verification_token is not None
-    ) 
+    )
