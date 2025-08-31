@@ -40,7 +40,13 @@ class FootballAPIMapper:
             'tedesca': 'Germany', 'tedesche': 'Germany', 'tedeschi': 'Germany', 'tedesco': 'Germany',
             # Brasile
             'brasil': 'Brazil', 'brasile': 'Brazil', 'brazil': 'Brazil',
-            'brasiliana': 'Brazil', 'brasiliane': 'Brazil', 'brasiliani': 'Brazil', 'brasiliano': 'Brazil'
+            'brasiliana': 'Brazil', 'brasiliane': 'Brazil', 'brasiliani': 'Brazil', 'brasiliano': 'Brazil',
+            # Portogallo
+            'portugal': 'Portugal', 'portogallo': 'Portugal', 'portuguese': 'Portugal',
+            'portoghese': 'Portugal', 'portoghesi': 'Portugal',
+            # Olanda
+            'netherlands': 'Netherlands', 'olanda': 'Netherlands', 'paesi bassi': 'Netherlands',
+            'dutch': 'Netherlands', 'olandese': 'Netherlands', 'olandesi': 'Netherlands'
         }
         
         self.league_mappings = {
@@ -48,6 +54,7 @@ class FootballAPIMapper:
             'serie a': {'league': 135, 'country': 'Italy'},
             'serie b': {'league': 136, 'country': 'Italy'},
             'serie c': {'league': 137, 'country': 'Italy'},
+            'coppa italia': {'league': 137, 'country': 'Italy'},  # Verificare ID corretto
             'champions league': {'league': 2, 'country': 'World'},
             'europa league': {'league': 3, 'country': 'World'},
             # Inghilterra  
@@ -56,10 +63,21 @@ class FootballAPIMapper:
             # Spagna
             'la liga': {'league': 140, 'country': 'Spain'},
             'liga': {'league': 140, 'country': 'Spain'},
+            'segunda division': {'league': 141, 'country': 'Spain'},
             # Francia
             'ligue 1': {'league': 61, 'country': 'France'},
+            'ligue 2': {'league': 62, 'country': 'France'},
             # Germania
             'bundesliga': {'league': 78, 'country': 'Germany'},
+            '2. bundesliga': {'league': 79, 'country': 'Germany'},
+            '3. liga': {'league': 80, 'country': 'Germany'},
+            'dfb-pokal': {'league': 81, 'country': 'Germany'},
+            'dfb pokal': {'league': 81, 'country': 'Germany'},
+            'coppa di germania': {'league': 81, 'country': 'Germany'},
+            # Brasile
+            'serie a brasileira': {'league': 71, 'country': 'Brazil'},
+            'brasileirao': {'league': 71, 'country': 'Brazil'},
+            'serie b brasileira': {'league': 72, 'country': 'Brazil'},
         }
         
         # Usa l'anno corrente per supportare richieste future
@@ -202,9 +220,42 @@ class FootballAPIMapper:
 
     def _extract_country(self, question: str) -> Optional[str]:
         """Estrae il paese dalla domanda"""
+        # Prima prova con i mapping espliciti
         for key, value in self.country_codes.items():
             if key in question:
                 return value
+        
+        # Se non trova mapping espliciti, prova a estrarre nomi di paesi comuni
+        # usando pattern più generici
+        import re
+        
+        # Pattern per paesi comuni non mappati
+        country_patterns = {
+            r'\bargentin[ai]\b': 'Argentina',
+            r'\bchile\b': 'Chile', 
+            r'\buruguay\b': 'Uruguay',
+            r'\bcolomb[ia]\b': 'Colombia',
+            r'\bper[uù]\b': 'Peru',
+            r'\bmessico\b': 'Mexico',
+            r'\bbelg[io]\b': 'Belgium',
+            r'\bbelgio\b': 'Belgium',
+            r'\bsvizzer[ai]\b': 'Switzerland',
+            r'\baustr[ia]\b': 'Austria',
+            r'\baustia\b': 'Austria',  # Gestisce errori di battitura comuni
+            r'\bpoloni[ai]\b': 'Poland',
+            r'\brepubblica ceca\b': 'Czech Republic',
+            r'\bturchi[ai]\b': 'Turkey',
+            r'\bgreci[ai]\b': 'Greece',
+            r'\bsvezia\b': 'Sweden',
+            r'\bnorvegia\b': 'Norway',
+            r'\bdanimarca\b': 'Denmark'
+        }
+        
+        question_lower = question.lower()
+        for pattern, country in country_patterns.items():
+            if re.search(pattern, question_lower):
+                return country
+                
         return None
     
     def _extract_league(self, question: str) -> Optional[Dict[str, Any]]:
@@ -229,24 +280,44 @@ class FootballAPIMapper:
     
     def _get_date_range(self, question: str) -> Tuple[Optional[str], Optional[str]]:
         """Estrae il range di date dalla domanda"""
-        today = datetime.now()
+        now = datetime.now()
+        
+        # Riconoscimento di orari specifici (es. "sono le 18:15")
+        time_pattern = r'(?:sono le|è|ore)\s*(\d{1,2})[:.](\d{2})'
+        time_match = re.search(time_pattern, question, re.IGNORECASE)
+        if time_match:
+            hour = int(time_match.group(1))
+            minute = int(time_match.group(2))
+            # Se l'orario è nel futuro di oggi, usa oggi, altrimenti domani
+            current_time = now.time()
+            specified_time = datetime.strptime(f"{hour}:{minute}", "%H:%M").time()
+            
+            if specified_time > current_time:
+                # L'orario è ancora nel futuro di oggi
+                date_str = now.strftime('%Y-%m-%d')
+            else:
+                # L'orario è già passato, considera domani
+                tomorrow = now + timedelta(days=1)
+                date_str = tomorrow.strftime('%Y-%m-%d')
+            return date_str, date_str
         
         if 'oggi' in question:
-            date_str = today.strftime('%Y-%m-%d')
+            # Per "oggi", inizia dall'ora corrente fino alla fine della giornata
+            date_str = now.strftime('%Y-%m-%d')
             return date_str, date_str
         elif 'domani' in question:
-            tomorrow = today + timedelta(days=1)
+            tomorrow = now + timedelta(days=1)
             date_str = tomorrow.strftime('%Y-%m-%d')
             return date_str, date_str
         elif 'settimana' in question:
-            end_week = today + timedelta(days=7)
-            return today.strftime('%Y-%m-%d'), end_week.strftime('%Y-%m-%d')
+            end_week = now + timedelta(days=7)
+            return now.strftime('%Y-%m-%d'), end_week.strftime('%Y-%m-%d')
         elif 'weekend' in question:
             # Prossimo weekend (sabato-domenica)
-            days_ahead = 5 - today.weekday()  # Sabato
+            days_ahead = 5 - now.weekday()  # Sabato
             if days_ahead <= 0:
                 days_ahead += 7
-            saturday = today + timedelta(days=days_ahead)
+            saturday = now + timedelta(days=days_ahead)
             sunday = saturday + timedelta(days=1)
             return saturday.strftime('%Y-%m-%d'), sunday.strftime('%Y-%m-%d')
         
@@ -316,7 +387,8 @@ class FootballAPIMapper:
                         "league": 135, # Serie A
                         "season": self.current_season,
                         "from": start_date,
-                        "to": end_date
+                        "to": end_date,
+                        "status": "NS-LIVE"  # Solo partite non iniziate o live
                     },
                     description=f"Prossime partite Serie A",
                     priority=1
@@ -328,7 +400,8 @@ class FootballAPIMapper:
                         "league": 136, # Serie B
                         "season": self.current_season,
                         "from": start_date,
-                        "to": end_date
+                        "to": end_date,
+                        "status": "NS-LIVE"  # Solo partite non iniziate o live
                     },
                     description=f"Prossime partite Serie B",
                     priority=2
@@ -340,10 +413,37 @@ class FootballAPIMapper:
                         "league": 137, # Serie C
                         "season": self.current_season,
                         "from": start_date,
-                        "to": end_date
+                        "to": end_date,
+                        "status": "NS-LIVE"  # Solo partite non iniziate o live
                     },
                     description=f"Prossime partite Serie C",
                     priority=3
+                ))
+                # Serie D
+                calls.append(APICall(
+                    endpoint="fixtures", 
+                    params={
+                        "league": 138, # Serie D
+                        "season": self.current_season,
+                        "from": start_date,
+                        "to": end_date,
+                        "status": "NS-LIVE"  # Solo partite non iniziate o live
+                    },
+                    description=f"Prossime partite Serie D",
+                    priority=4
+                ))
+                # Coppa Italia
+                calls.append(APICall(
+                    endpoint="fixtures", 
+                    params={
+                        "league": 137, # Coppa Italia (stesso ID Serie C, verificare)
+                        "season": self.current_season,
+                        "from": start_date,
+                        "to": end_date,
+                        "status": "NS-LIVE"  # Solo partite non iniziate o live
+                    },
+                    description=f"Prossime partite Coppa Italia",
+                    priority=5
                 ))
             elif country == "Spain":
                 calls.append(APICall(
@@ -369,8 +469,134 @@ class FootballAPIMapper:
                     description=f"Prossime partite Premier League",
                     priority=1
                 ))
+                # Championship
+                calls.append(APICall(
+                    endpoint="fixtures",
+                    params={
+                        "league": 40, # Championship
+                        "season": self.current_season,
+                        "from": start_date,
+                        "to": end_date
+                    },
+                    description=f"Prossime partite Championship",
+                    priority=2
+                ))
+            elif country == "Germany":
+                # Bundesliga
+                calls.append(APICall(
+                    endpoint="fixtures",
+                    params={
+                        "league": 78, # Bundesliga
+                        "season": self.current_season,
+                        "from": start_date,
+                        "to": end_date,
+                        "status": "NS-LIVE"  # Solo partite non iniziate o live
+                    },
+                    description=f"Prossime partite Bundesliga",
+                    priority=1
+                ))
+                # 2. Bundesliga
+                calls.append(APICall(
+                    endpoint="fixtures",
+                    params={
+                        "league": 79, # 2. Bundesliga
+                        "season": self.current_season,
+                        "from": start_date,
+                        "to": end_date,
+                        "status": "NS-LIVE"  # Solo partite non iniziate o live
+                    },
+                    description=f"Prossime partite 2. Bundesliga",
+                    priority=2
+                ))
+                # 3. Liga
+                calls.append(APICall(
+                    endpoint="fixtures",
+                    params={
+                        "league": 80, # 3. Liga
+                        "season": self.current_season,
+                        "from": start_date,
+                        "to": end_date,
+                        "status": "NS-LIVE"  # Solo partite non iniziate o live
+                    },
+                    description=f"Prossime partite 3. Liga",
+                    priority=3
+                ))
+                # DFB-Pokal (Coppa di Germania)
+                calls.append(APICall(
+                    endpoint="fixtures",
+                    params={
+                        "league": 81, # DFB-Pokal
+                        "season": self.current_season,
+                        "from": start_date,
+                        "to": end_date,
+                        "status": "NS-LIVE"  # Solo partite non iniziate o live
+                    },
+                    description=f"Prossime partite DFB-Pokal",
+                    priority=4
+                ))
+            elif country == "France":
+                # Ligue 1
+                calls.append(APICall(
+                    endpoint="fixtures",
+                    params={
+                        "league": 61, # Ligue 1
+                        "season": self.current_season,
+                        "from": start_date,
+                        "to": end_date,
+                        "status": "NS-LIVE"  # Solo partite non iniziate o live
+                    },
+                    description=f"Prossime partite Ligue 1",
+                    priority=1
+                ))
+                # Ligue 2
+                calls.append(APICall(
+                    endpoint="fixtures",
+                    params={
+                        "league": 62, # Ligue 2
+                        "season": self.current_season,
+                        "from": start_date,
+                        "to": end_date,
+                        "status": "NS-LIVE"  # Solo partite non iniziate o live
+                    },
+                    description=f"Prossime partite Ligue 2",
+                    priority=2
+                ))
+            elif country == "Brazil":
+                # Serie A Brasileira
+                calls.append(APICall(
+                    endpoint="fixtures",
+                    params={
+                        "league": 71, # Serie A Brasileira
+                        "season": self.current_season,
+                        "from": start_date,
+                        "to": end_date,
+                        "status": "NS-LIVE"  # Solo partite non iniziate o live
+                    },
+                    description=f"Prossime partite Serie A Brasileira",
+                    priority=1
+                ))
+                # Serie B Brasileira
+                calls.append(APICall(
+                    endpoint="fixtures",
+                    params={
+                        "league": 72, # Serie B Brasileira
+                        "season": self.current_season,
+                        "from": start_date,
+                        "to": end_date,
+                        "status": "NS-LIVE"  # Solo partite non iniziate o live
+                    },
+                    description=f"Prossime partite Serie B Brasileira",
+                    priority=2
+                ))
             else:
-                # Fallback generico per altri paesi
+                # Fallback migliorato: prima prova a ottenere tutte le leghe del paese
+                calls.append(APICall(
+                    endpoint="leagues",
+                    params={"country": country},
+                    description=f"Recupera tutte le leghe di {country}",
+                    priority=1
+                ))
+                # Poi cerca partite generiche per quella data
                 params = {"date": start_date}
                 calls.append(APICall(
                     endpoint="fixtures",
@@ -392,14 +618,66 @@ class FootballAPIMapper:
     
     def _handle_live_matches(self, question: str) -> List[APICall]:
         """Gestisce domande sulle partite live"""
-        calls = [
-            APICall(
+        calls = []
+        
+        country = self._extract_country(question)
+        league = self._extract_league(question)
+        team = self._extract_team_name(question)
+        
+        if team:
+            # Prima aggiungi una chiamata per ottenere l'ID della squadra
+            calls.append(APICall(
+                endpoint="teams",
+                params={"search": team},
+                description=f"Ricerca ID per {team}",
+                priority=1
+            ))
+            
+            # Poi aggiungi la chiamata per i fixtures live della squadra
+            calls.append(APICall(
+                endpoint="fixtures",
+                params={
+                    "team": team,
+                    "live": "all"
+                },
+                description=f"Partite live di {team}",
+                priority=1
+            ))
+        elif league:
+            # Partite live di un campionato specifico
+            calls.append(APICall(
+                endpoint="fixtures",
+                params={
+                    "league": league['league'],
+                    "live": "all"
+                },
+                description=f"Partite live del campionato",
+                priority=1
+            ))
+        elif country:
+            # Prima recupera tutte le leghe del paese
+            calls.append(APICall(
+                endpoint="leagues",
+                params={"country": country},
+                description=f"Recupera tutte le leghe di {country}",
+                priority=1
+            ))
+            # Poi cerca partite live generiche
+            calls.append(APICall(
+                endpoint="fixtures",
+                params={"live": "all"},
+                description="Partite live per filtrare per paese",
+                priority=2
+            ))
+        else:
+            # Fallback: tutte le partite live
+            calls.append(APICall(
                 endpoint="fixtures",
                 params={"live": "all"},
                 description="Partite attualmente in corso",
                 priority=1
-            )
-        ]
+            ))
+        
         return calls
     
     def _handle_past_matches(self, question: str) -> List[APICall]:
@@ -408,10 +686,13 @@ class FootballAPIMapper:
         
         team = self._extract_team_name(question)
         league = self._extract_league(question)
+        country = self._extract_country(question)
         
         # Date passate - estendi il range per assicurarsi di trovare partite terminate
         today = datetime.now()
         last_month = today - timedelta(days=30)  # Esteso a 30 giorni per trovare più partite
+        start_date = last_month.strftime('%Y-%m-%d')
+        end_date = today.strftime('%Y-%m-%d')
         
         if team:
             # Prima aggiungi una chiamata per ottenere l'ID della squadra
@@ -427,8 +708,8 @@ class FootballAPIMapper:
             params = {
                 "team": team,
                 "season": self.current_season,
-                "from": last_month.strftime('%Y-%m-%d'),
-                "to": today.strftime('%Y-%m-%d'),
+                "from": start_date,
+                "to": end_date,
                 "status": "FT"  # Solo partite finite
             }
             calls.append(APICall(
@@ -444,7 +725,7 @@ class FootballAPIMapper:
                 "league": league['league'],
                 "season": self.current_season,
                 "from": last_week.strftime('%Y-%m-%d'),
-                "to": today.strftime('%Y-%m-%d'),
+                "to": end_date,
                 "status": "FT"  # Solo partite finite
             }
             calls.append(APICall(
@@ -452,6 +733,38 @@ class FootballAPIMapper:
                 params=params,
                 description="Risultati recenti del campionato (partite terminate)",
                 priority=1
+            ))
+        elif country:
+            # Fallback migliorato: prima prova a ottenere tutte le leghe del paese
+            calls.append(APICall(
+                endpoint="leagues",
+                params={"country": country},
+                description=f"Recupera tutte le leghe di {country}",
+                priority=1
+            ))
+            # Poi cerca partite generiche per quella data
+            params = {
+                "date": start_date,
+                "status": "FT"  # Solo partite finite
+            }
+            calls.append(APICall(
+                endpoint="fixtures",
+                params=params,
+                description=f"Partite terminate del {start_date} per filtrare per paese",
+                priority=2
+            ))
+        else:
+            # Fallback: partite terminate di ieri
+            yesterday = (today - timedelta(days=1)).strftime('%Y-%m-%d')
+            params = {
+                "date": yesterday,
+                "status": "FT"  # Solo partite finite
+            }
+            calls.append(APICall(
+                endpoint="fixtures",
+                params=params,
+                description=f"Partite terminate del {yesterday}",
+                priority=2
             ))
         
         return calls

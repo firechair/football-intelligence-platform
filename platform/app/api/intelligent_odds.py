@@ -143,20 +143,15 @@ async def get_user_suggestions(
         if current_user.id != user_id and not getattr(current_user, 'is_admin', False):
             raise HTTPException(status_code=403, detail="Access denied")
         
-        # Sample match data - in real implementation, this would come from current matches
-        sample_match_data = {
-            'markets': ['1X2', 'Over/Under', 'Both Teams to Score'],
-            'odds': {
-                'Bookmaker A': {'1X2': 2.10, 'Over/Under': 1.85},
-                'Bookmaker B': {'1X2': 2.05, 'Over/Under': 1.90},
-                'Bookmaker G': {'1X2': 2.15, 'Over/Under': 1.80}
-            }
-        }
+        # TODO: Implement real match data retrieval from current matches
+        # For now, return empty suggestions to avoid showing fake data
+        suggestions = []
         
-        suggestions = await bookmaker_analytics.generate_user_suggestions(
-            user_id, 
-            sample_match_data
-        )
+        # In real implementation, this would:
+        # 1. Fetch current live matches with odds
+        # 2. Analyze user betting history and preferences
+        # 3. Generate personalized suggestions based on real data
+        # suggestions = await bookmaker_analytics.generate_user_suggestions(user_id, real_match_data)
         
         return [BettingSuggestion(**suggestion) for suggestion in suggestions]
         

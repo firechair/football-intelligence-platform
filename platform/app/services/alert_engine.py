@@ -293,27 +293,16 @@ class SmartAlertEngine:
             # 2. Use mathematical models to calculate expected value
             # 3. Consider bookmaker margins and market efficiency
             
-            # For now, return sample opportunities
-            sample_opportunities = [
-                {
-                    'fixture_id': 12345,
-                    'match': 'Team A vs Team B',
-                    'market': '1X2',
-                    'outcome': '1',
-                    'bookmaker': 'Bookmaker A',
-                    'odds': 2.85,
-                    'expected_value': 8.5,
-                    'confidence': 0.75,
-                    'reasoning': 'Odds 15% above fair value based on historical data'
-                }
-            ]
+            # TODO: Implement real value betting opportunity detection
+            # For now, return empty opportunities to avoid showing fake data
+            # In real implementation, this would:
+            # 1. Compare current odds with historical averages
+            # 2. Use mathematical models to calculate expected value
+            # 3. Consider bookmaker margins and market efficiency
+            # 4. Filter based on user criteria and preferences
             
-            # Filter based on criteria
-            for opp in sample_opportunities:
-                if (opp['expected_value'] >= min_value_threshold and 
-                    opp['odds'] <= max_odds and
-                    opp['market'] in preferred_markets):
-                    opportunities.append(opp)
+            # Return empty list until real implementation is ready
+            opportunities = []
             
             return opportunities
             
