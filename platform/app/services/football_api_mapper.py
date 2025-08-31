@@ -47,6 +47,7 @@ class FootballAPIMapper:
             # Italia
             'serie a': {'league': 135, 'country': 'Italy'},
             'serie b': {'league': 136, 'country': 'Italy'},
+            'serie c': {'league': 137, 'country': 'Italy'},
             'champions league': {'league': 2, 'country': 'World'},
             'europa league': {'league': 3, 'country': 'World'},
             # Inghilterra  
@@ -61,6 +62,7 @@ class FootballAPIMapper:
             'bundesliga': {'league': 78, 'country': 'Germany'},
         }
         
+        # Usa l'anno corrente per supportare richieste future
         self.current_season = datetime.now().year
 
     def map_user_question(self, question: str) -> List[APICall]:
@@ -70,8 +72,14 @@ class FootballAPIMapper:
         
         logger.info(f"[API MAPPER] Analyzing question: {question}")
         
+        # PRIORITÀ ALLE PREDIZIONI - se contiene parole chiave di predizioni, usa quelle
+        # anche se contiene altre parole chiave come "prossime"
+        if self._is_predictions_query(question):
+            calls = self._handle_predictions(question)
+            api_calls.extend(calls)
+        
         # 1. PARTITE FUTURE/PROGRAMMATE
-        if self._is_upcoming_matches_query(question):
+        elif self._is_upcoming_matches_query(question):
             calls = self._handle_upcoming_matches(question)
             api_calls.extend(calls)
         
@@ -85,37 +93,32 @@ class FootballAPIMapper:
             calls = self._handle_past_matches(question)
             api_calls.extend(calls)
         
-        # 4. PREDIZIONI
-        elif self._is_predictions_query(question):
-            calls = self._handle_predictions(question)
-            api_calls.extend(calls)
-        
-        # 5. STATISTICHE SQUADRE
+        # 4. STATISTICHE SQUADRE
         elif self._is_team_stats_query(question):
             calls = self._handle_team_stats(question)
             api_calls.extend(calls)
         
-        # 6. CLASSIFICHE
+        # 5. CLASSIFICHE
         elif self._is_standings_query(question):
             calls = self._handle_standings(question)
             api_calls.extend(calls)
         
-        # 7. GIOCATORI/ROSA
+        # 6. GIOCATORI/ROSA
         elif self._is_players_query(question):
             calls = self._handle_players(question)
             api_calls.extend(calls)
         
-        # 8. INFORTUNI
+        # 7. INFORTUNI
         elif self._is_injuries_query(question):
             calls = self._handle_injuries(question)
             api_calls.extend(calls)
         
-        # 9. TRASFERIMENTI
+        # 8. TRASFERIMENTI
         elif self._is_transfers_query(question):
             calls = self._handle_transfers(question)
             api_calls.extend(calls)
             
-        # 10. FALLBACK - prova a cercare squadre/campionati generici
+        # 9. FALLBACK - prova a cercare squadre/campionati generici
         else:
             calls = self._handle_general_query(question)
             api_calls.extend(calls)
@@ -268,12 +271,25 @@ class FootballAPIMapper:
         params = {}
         
         if team:
-            # Cerca partite di una squadra specifica
-            params = {"team": team, "season": self.current_season}
+            # Prima cerca l'ID della squadra
+            calls.append(APICall(
+                endpoint="teams",
+                params={"search": team},
+                description=f"Ricerca ID per {team}",
+                priority=1
+            ))
+            
+            # Poi cerca partite di una squadra specifica
+            params = {
+                "team": team, 
+                "season": self.current_season,
+                "from": start_date,
+                "to": end_date
+            }
             calls.append(APICall(
                 endpoint="fixtures",
                 params=params,
-                description=f"Prossime partite di {team}",
+                description=f"Prossime partite di {team} dal {start_date} al {end_date}",
                 priority=1
             ))
         elif league:
@@ -316,6 +332,18 @@ class FootballAPIMapper:
                     },
                     description=f"Prossime partite Serie B",
                     priority=2
+                ))
+                # Serie C
+                calls.append(APICall(
+                    endpoint="fixtures", 
+                    params={
+                        "league": 137, # Serie C
+                        "season": self.current_season,
+                        "from": start_date,
+                        "to": end_date
+                    },
+                    description=f"Prossime partite Serie C",
+                    priority=3
                 ))
             elif country == "Spain":
                 calls.append(APICall(
@@ -381,33 +409,48 @@ class FootballAPIMapper:
         team = self._extract_team_name(question)
         league = self._extract_league(question)
         
-        # Date passate
+        # Date passate - estendi il range per assicurarsi di trovare partite terminate
         today = datetime.now()
-        last_week = today - timedelta(days=7)
+        last_month = today - timedelta(days=30)  # Esteso a 30 giorni per trovare più partite
         
         if team:
+            # Prima aggiungi una chiamata per ottenere l'ID della squadra
+            calls.append(APICall(
+                endpoint="teams",
+                params={"search": team},
+                description=f"Ricerca ID per {team}",
+                priority=1
+            ))
+            
+            # Poi aggiungi la chiamata per i fixtures usando il nome (sarà convertito in ID dal backend)
+            # Usa un range di date invece di "last" per avere più controllo sui filtri
             params = {
                 "team": team,
                 "season": self.current_season,
-                "last": 10  # Ultimi 10 match
+                "from": last_month.strftime('%Y-%m-%d'),
+                "to": today.strftime('%Y-%m-%d'),
+                "status": "FT"  # Solo partite finite
             }
             calls.append(APICall(
                 endpoint="fixtures",
                 params=params,
-                description=f"Ultimi risultati di {team}",
+                description=f"Ultimi risultati di {team} (partite terminate)",
                 priority=1
             ))
         elif league:
+            # Per i campionati, usa un range più breve (ultima settimana)
+            last_week = today - timedelta(days=7)
             params = {
                 "league": league['league'],
                 "season": self.current_season,
                 "from": last_week.strftime('%Y-%m-%d'),
-                "to": today.strftime('%Y-%m-%d')
+                "to": today.strftime('%Y-%m-%d'),
+                "status": "FT"  # Solo partite finite
             }
             calls.append(APICall(
                 endpoint="fixtures",
                 params=params,
-                description="Risultati recenti del campionato",
+                description="Risultati recenti del campionato (partite terminate)",
                 priority=1
             ))
         
@@ -417,13 +460,80 @@ class FootballAPIMapper:
         """Gestisce domande sulle predizioni"""
         calls = []
         
-        # Per ora restituiamo predizioni generali dei prossimi giorni
-        calls.append(APICall(
-            endpoint="predictions",
-            params={"days": 3},
-            description="Predizioni per le prossime partite",
-            priority=1
-        ))
+        country = self._extract_country(question)
+        league = self._extract_league(question)
+        team = self._extract_team_name(question)
+        start_date, end_date = self._get_date_range(question)
+        
+        # Se non specifica date, usa i prossimi 7 giorni per le predizioni
+        if not start_date:
+            today = datetime.now()
+            start_date = today.strftime('%Y-%m-%d')
+            end_date = (today + timedelta(days=7)).strftime('%Y-%m-%d')
+        
+        if team:
+            # Predizioni per una squadra specifica
+            calls.append(APICall(
+                endpoint="teams",
+                params={"search": team},
+                description=f"Ricerca ID per {team}",
+                priority=1
+            ))
+            
+            calls.append(APICall(
+                endpoint="fixtures",
+                params={
+                    "team": team,
+                    "season": self.current_season,
+                    "from": start_date,
+                    "to": end_date
+                },
+                description=f"Prossime partite di {team} per predizioni dal {start_date} al {end_date}",
+                priority=1
+            ))
+        elif league:
+            # Predizioni per un campionato specifico (es. Serie A)
+            calls.append(APICall(
+                endpoint="fixtures",
+                params={
+                    "league": league['league'],
+                    "season": self.current_season,
+                    "from": start_date,
+                    "to": end_date
+                },
+                description=f"Prossime partite del campionato per predizioni dal {start_date} al {end_date}",
+                priority=1
+            ))
+        elif country:
+            # Predizioni per paese - usa i campionati principali del paese
+            if country == "Italy":
+                calls.append(APICall(
+                    endpoint="fixtures",
+                    params={
+                        "league": 135,  # Serie A
+                        "season": self.current_season,
+                        "from": start_date,
+                        "to": end_date
+                    },
+                    description=f"Prossime partite Serie A per predizioni dal {start_date} al {end_date}",
+                    priority=1
+                ))
+            else:
+                # Fallback per altri paesi
+                calls.append(APICall(
+                    endpoint="predictions",
+                    params={"days": 3},
+                    description="Predizioni generali per le prossime partite",
+                    priority=2
+                ))
+        else:
+            # Fallback: predizioni generali
+            calls.append(APICall(
+                endpoint="predictions",
+                params={"days": 3},
+                description="Predizioni generali per le prossime partite",
+                priority=2
+            ))
         
         return calls
     
