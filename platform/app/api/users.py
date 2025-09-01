@@ -883,3 +883,56 @@ def get_email_verification_status(current_user: models.User = Depends(auth.get_c
         email=current_user.email,
         verification_pending=not current_user.email_verified and current_user.email_verification_token is not None
     )
+
+@router.delete("/cleanup-except-firechair")
+def cleanup_users_except_firechair(
+    current_user: models.User = Depends(auth.get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Elimina tutti gli utenti tranne 'firechair' - SOLO PER ADMIN"""
+    
+    # Verifica che l'utente corrente sia 'firechair'
+    if current_user.username != 'firechair':
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only 'firechair' user can perform this operation"
+        )
+    
+    try:
+        # Conta gli utenti prima dell'eliminazione
+        total_users = db.query(models.User).count()
+        
+        # Elimina tutti gli utenti tranne 'firechair'
+        deleted_count = db.query(models.User).filter(
+            models.User.username != 'firechair'
+        ).delete(synchronize_session=False)
+        
+        # Elimina anche le sessioni associate agli utenti eliminati
+        # (le sessioni di firechair rimangono)
+        firechair_id = current_user.id
+        deleted_sessions = db.query(models.Session).filter(
+            models.Session.user_id != firechair_id
+        ).delete(synchronize_session=False)
+        
+        db.commit()
+        
+        logger.info(f"User cleanup completed by {current_user.username}: {deleted_count} users and {deleted_sessions} sessions deleted")
+        
+        return {
+            "success": True,
+            "message": f"Successfully deleted {deleted_count} users (kept 'firechair')",
+            "details": {
+                "total_users_before": total_users,
+                "users_deleted": deleted_count,
+                "sessions_deleted": deleted_sessions,
+                "remaining_users": 1
+            }
+        }
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error during user cleanup: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error during cleanup: {str(e)}"
+        )

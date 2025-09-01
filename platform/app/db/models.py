@@ -27,15 +27,32 @@ class User(Base):
     password_reset_token = Column(String(255), nullable=True)
     password_reset_expires = Column(DateTime, nullable=True)
     
-    chat_memories = relationship("ChatMemory", back_populates="user")
+    chat_conversations = relationship("ChatConversation", back_populates="user")
 
-class ChatMemory(Base):
-    __tablename__ = "chat_memories"
+class ChatConversation(Base):
+    __tablename__ = "chat_conversations"
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    memory_context = Column(Text, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    title = Column(String(255), nullable=True)  # Titolo generato automaticamente
+    created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
-    user = relationship("User", back_populates="chat_memories") 
+    is_active = Column(Boolean, default=True, index=True)
+    
+    # Relationship
+    user = relationship("User", back_populates="chat_conversations")
+    messages = relationship("ChatMessage", back_populates="conversation", cascade="all, delete-orphan")
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+    id = Column(Integer, primary_key=True, index=True)
+    conversation_id = Column(Integer, ForeignKey("chat_conversations.id", ondelete="CASCADE"), nullable=False, index=True)
+    role = Column(String(20), nullable=False)  # 'user' or 'assistant'
+    content = Column(Text, nullable=False)
+    message_metadata = Column(JSON, nullable=True)  # Per salvare intent, confidence, etc.
+    created_at = Column(DateTime, server_default=func.now())
+    
+    # Relationship
+    conversation = relationship("ChatConversation", back_populates="messages") 
 
 class Event(Base):
     __tablename__ = "events"
@@ -124,4 +141,4 @@ class SmartAlerts(Base):
     created_at = Column(DateTime, server_default=func.now())
     
     # Relationship
-    user = relationship("User", backref="smart_alerts") 
+    user = relationship("User", backref="smart_alerts")
