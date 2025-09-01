@@ -19,7 +19,7 @@ class ChatMessage:
     role: str  # "user" | "assistant"
     content: str
     timestamp: float
-    metadata: Optional[Dict[str, Any]] = None
+    message_metadata: Optional[Dict[str, Any]] = None
 
 @dataclass
 class ConversationContext:
@@ -102,7 +102,7 @@ class ConversationMemoryService:
                 logger.info(f"[MEMORY] Created new conversation for {session_id}")
                 return conversation
     
-    def add_message(self, session_id: str, role: str, content: str, metadata: Optional[Dict[str, Any]] = None):
+    def add_message(self, session_id: str, role: str, content: str, message_metadata: Optional[Dict[str, Any]] = None):
         """Aggiunge un messaggio alla conversazione"""
         with self._lock:
             conversation = self.get_or_create_conversation(session_id)
@@ -112,7 +112,7 @@ class ConversationMemoryService:
                 role=role,
                 content=content,
                 timestamp=time.time(),
-                metadata=metadata or {}
+                message_metadata=message_metadata or {}
             )
             
             # Aggiunge il messaggio

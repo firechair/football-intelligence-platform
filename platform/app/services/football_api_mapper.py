@@ -96,6 +96,11 @@ class FootballAPIMapper:
             calls = self._handle_predictions(question)
             api_calls.extend(calls)
         
+        # PRIORITÀ ALLE QUOTE - se contiene parole chiave di quote, usa quelle
+        elif self._is_odds_query(question):
+            calls = self._handle_odds(question)
+            api_calls.extend(calls)
+        
         # 1. PARTITE FUTURE/PROGRAMMATE
         elif self._is_upcoming_matches_query(question):
             calls = self._handle_upcoming_matches(question)
@@ -174,9 +179,18 @@ class FootballAPIMapper:
         """Rileva domande sulle predizioni"""
         keywords = [
             'predizion', 'prediction', 'previsioni', 'forecast',
-            'pronostic', 'analisi', 'chi vince', 'vincerà'
+            'pronostic', 'analisi', 'chi vince', 'vincerà',
+            'prevedi', 'prevedere', 'predire', 'predici'
         ]
-        return any(keyword in question for keyword in keywords)
+        return any(keyword in question.lower() for keyword in keywords)
+    
+    def _is_odds_query(self, question: str) -> bool:
+        """Rileva domande sulle quote"""
+        keywords = [
+            'quote', 'odds', 'quota', 'quotazione', 'quotazioni',
+            'bookmaker', 'scommess', 'bet', 'betting', 'puntata'
+        ]
+        return any(keyword in question.lower() for keyword in keywords)
     
     def _is_team_stats_query(self, question: str) -> bool:
         """Rileva domande sulle statistiche squadre"""
@@ -266,16 +280,71 @@ class FootballAPIMapper:
         return None
     
     def _extract_team_name(self, question: str) -> Optional[str]:
-        """Estrae il nome della squadra dalla domanda (semplificato)"""
-        # Lista squadre famose italiane
-        italian_teams = [
-            'milan', 'inter', 'juventus', 'juve', 'napoli', 'roma', 'lazio',
-            'fiorentina', 'atalanta', 'torino', 'bologna', 'udinese', 'sassuolo'
-        ]
+        """Estrae il nome della squadra dalla domanda con mappatura intelligente"""
+        # Mappatura squadre con varianti e nomi completi
+        team_mappings = {
+            # Squadre italiane Serie A
+            'milan': 'AC Milan',
+            'ac milan': 'AC Milan',
+            'inter': 'Inter Milan', 
+            'inter milan': 'Inter Milan',
+            'juventus': 'Juventus',
+            'juve': 'Juventus',
+            'napoli': 'Napoli',
+            'roma': 'AS Roma',
+            'as roma': 'AS Roma',
+            'lazio': 'Lazio',
+            'fiorentina': 'Fiorentina',
+            'atalanta': 'Atalanta',
+            'torino': 'Torino',
+            'bologna': 'Bologna',
+            'udinese': 'Udinese',
+            'sassuolo': 'Sassuolo',
+            'genoa': 'Genoa',
+            'sampdoria': 'Sampdoria',
+            'cagliari': 'Cagliari',
+            'verona': 'Hellas Verona',
+            'hellas verona': 'Hellas Verona',
+            'empoli': 'Empoli',
+            'lecce': 'Lecce',
+            'monza': 'Monza',
+            'salernitana': 'Salernitana',
+            
+            # Squadre internazionali famose
+            'barcelona': 'Barcelona',
+            'barca': 'Barcelona',
+            'real madrid': 'Real Madrid',
+            'madrid': 'Real Madrid',
+            'atletico madrid': 'Atletico Madrid',
+            'atletico': 'Atletico Madrid',
+            'manchester united': 'Manchester United',
+            'united': 'Manchester United',
+            'manchester city': 'Manchester City',
+            'city': 'Manchester City',
+            'liverpool': 'Liverpool',
+            'chelsea': 'Chelsea',
+            'arsenal': 'Arsenal',
+            'tottenham': 'Tottenham',
+            'spurs': 'Tottenham',
+            'bayern munich': 'Bayern Munich',
+            'bayern': 'Bayern Munich',
+            'borussia dortmund': 'Borussia Dortmund',
+            'dortmund': 'Borussia Dortmund',
+            'psg': 'Paris Saint Germain',
+            'paris saint germain': 'Paris Saint Germain',
+            'paris': 'Paris Saint Germain'
+        }
         
-        for team in italian_teams:
-            if team in question:
-                return team.title()
+        question_lower = question.lower()
+        
+        # Cerca la corrispondenza più lunga prima (per evitare che "real" matchi prima di "real madrid")
+        sorted_teams = sorted(team_mappings.keys(), key=len, reverse=True)
+        
+        for team_key in sorted_teams:
+            if team_key in question_lower:
+                logger.info(f"[TEAM EXTRACTION] Found team '{team_key}' -> '{team_mappings[team_key]}'")
+                return team_mappings[team_key]
+        
         return None
     
     def _get_date_range(self, question: str) -> Tuple[Optional[str], Optional[str]]:
@@ -605,14 +674,39 @@ class FootballAPIMapper:
                     priority=2
                 ))
         else:
-            # Fallback: partite di oggi/domani
-            params = {"date": start_date}
-            calls.append(APICall(
-                endpoint="fixtures",
-                params=params,
-                description=f"Partite del {start_date}",
-                priority=2
-            ))
+            # Controlla se la richiesta menziona campionati europei o maggiori
+            if any(word in question.lower() for word in ['europei', 'europe', 'maggiori', 'principali']):
+                # Top 5 campionati europei
+                top_leagues = [
+                    (135, "Serie A"),
+                    (39, "Premier League"), 
+                    (140, "La Liga"),
+                    (78, "Bundesliga"),
+                    (61, "Ligue 1")
+                ]
+                
+                for league_id, league_name in top_leagues:
+                    calls.append(APICall(
+                        endpoint="fixtures",
+                        params={
+                            "league": league_id,
+                            "season": self.current_season,
+                            "from": start_date,
+                            "to": end_date,
+                            "status": "NS"  # Solo partite non iniziate
+                        },
+                        description=f"Prossime partite {league_name}",
+                        priority=1
+                    ))
+            else:
+                # Fallback: partite di oggi/domani
+                params = {"date": start_date}
+                calls.append(APICall(
+                    endpoint="fixtures",
+                    params=params,
+                    description=f"Partite del {start_date}",
+                    priority=2
+                ))
         
         return calls
     
@@ -840,13 +934,211 @@ class FootballAPIMapper:
                     priority=2
                 ))
         else:
-            # Fallback: predizioni generali
+            # Controlla se menziona campionati specifici anche senza riconoscimento automatico
+            if 'serie a' in question.lower():
+                calls.append(APICall(
+                    endpoint="fixtures",
+                    params={
+                        "league": 135,  # Serie A
+                        "season": self.current_season,
+                        "from": start_date,
+                        "to": end_date
+                    },
+                    description=f"Partite Serie A per predizioni dal {start_date} al {end_date}",
+                    priority=1
+                ))
+            elif 'premier league' in question.lower():
+                calls.append(APICall(
+                    endpoint="fixtures",
+                    params={
+                        "league": 39,  # Premier League
+                        "season": self.current_season,
+                        "from": start_date,
+                        "to": end_date
+                    },
+                    description=f"Partite Premier League per predizioni dal {start_date} al {end_date}",
+                    priority=1
+                ))
+            elif 'la liga' in question.lower():
+                calls.append(APICall(
+                    endpoint="fixtures",
+                    params={
+                        "league": 140,  # La Liga
+                        "season": self.current_season,
+                        "from": start_date,
+                        "to": end_date
+                    },
+                    description=f"Partite La Liga per predizioni dal {start_date} al {end_date}",
+                    priority=1
+                ))
+            elif 'bundesliga' in question.lower():
+                calls.append(APICall(
+                    endpoint="fixtures",
+                    params={
+                        "league": 78,  # Bundesliga
+                        "season": self.current_season,
+                        "from": start_date,
+                        "to": end_date
+                    },
+                    description=f"Partite Bundesliga per predizioni dal {start_date} al {end_date}",
+                    priority=1
+                ))
+            elif 'ligue 1' in question.lower():
+                calls.append(APICall(
+                    endpoint="fixtures",
+                    params={
+                        "league": 61,  # Ligue 1
+                        "season": self.current_season,
+                        "from": start_date,
+                        "to": end_date
+                    },
+                    description=f"Partite Ligue 1 per predizioni dal {start_date} al {end_date}",
+                    priority=1
+                ))
+            else:
+                # Fallback: predizioni generali
+                calls.append(APICall(
+                    endpoint="predictions",
+                    params={"days": 3},
+                    description="Predizioni generali per le prossime partite",
+                    priority=2
+                ))
+        
+        return calls
+    
+    def _handle_odds(self, question: str) -> List[APICall]:
+        """Gestisce domande sulle quote"""
+        calls = []
+        
+        country = self._extract_country(question)
+        league = self._extract_league(question)
+        team = self._extract_team_name(question)
+        start_date, end_date = self._get_date_range(question)
+        
+        # Se non specifica date, usa i prossimi 7 giorni per le quote
+        if not start_date:
+            today = datetime.now()
+            start_date = today.strftime('%Y-%m-%d')
+            end_date = (today + timedelta(days=7)).strftime('%Y-%m-%d')
+        
+        if team:
+            # Quote per una squadra specifica
             calls.append(APICall(
-                endpoint="predictions",
-                params={"days": 3},
-                description="Predizioni generali per le prossime partite",
-                priority=2
+                endpoint="fixtures",
+                params={
+                    "team": team,
+                    "season": self.current_season,
+                    "from": start_date,
+                    "to": end_date
+                },
+                description=f"Prossime partite di {team} per quote dal {start_date} al {end_date}",
+                priority=1
             ))
+        elif league:
+            # Quote per un campionato specifico
+            calls.append(APICall(
+                endpoint="fixtures",
+                params={
+                    "league": league["id"],
+                    "season": self.current_season,
+                    "from": start_date,
+                    "to": end_date
+                },
+                description=f"Partite {league['name']} per quote dal {start_date} al {end_date}",
+                priority=1
+            ))
+        elif country:
+            # Gestione speciale per l'Italia (Serie A)
+            if country.lower() == "italy":
+                calls.append(APICall(
+                    endpoint="fixtures",
+                    params={
+                        "league": 135,  # Serie A
+                        "season": self.current_season,
+                        "from": start_date,
+                        "to": end_date
+                    },
+                    description=f"Partite Serie A per quote dal {start_date} al {end_date}",
+                    priority=1
+                ))
+            else:
+                # Fallback per altri paesi
+                calls.append(APICall(
+                    endpoint="fixtures",
+                    params={"date": start_date},
+                    description="Quote per partite di oggi",
+                    priority=2
+                ))
+        else:
+            # Controlla se menziona campionati specifici anche senza riconoscimento automatico
+            if 'serie a' in question.lower():
+                calls.append(APICall(
+                    endpoint="fixtures",
+                    params={
+                        "league": 135,  # Serie A
+                        "season": self.current_season,
+                        "from": start_date,
+                        "to": end_date
+                    },
+                    description=f"Partite Serie A per quote dal {start_date} al {end_date}",
+                    priority=1
+                ))
+            elif 'premier league' in question.lower():
+                calls.append(APICall(
+                    endpoint="fixtures",
+                    params={
+                        "league": 39,  # Premier League
+                        "season": self.current_season,
+                        "from": start_date,
+                        "to": end_date
+                    },
+                    description=f"Partite Premier League per quote dal {start_date} al {end_date}",
+                    priority=1
+                ))
+            elif 'la liga' in question.lower():
+                calls.append(APICall(
+                    endpoint="fixtures",
+                    params={
+                        "league": 140,  # La Liga
+                        "season": self.current_season,
+                        "from": start_date,
+                        "to": end_date
+                    },
+                    description=f"Partite La Liga per quote dal {start_date} al {end_date}",
+                    priority=1
+                ))
+            elif 'bundesliga' in question.lower():
+                calls.append(APICall(
+                    endpoint="fixtures",
+                    params={
+                        "league": 78,  # Bundesliga
+                        "season": self.current_season,
+                        "from": start_date,
+                        "to": end_date
+                    },
+                    description=f"Partite Bundesliga per quote dal {start_date} al {end_date}",
+                    priority=1
+                ))
+            elif 'ligue 1' in question.lower():
+                calls.append(APICall(
+                    endpoint="fixtures",
+                    params={
+                        "league": 61,  # Ligue 1
+                        "season": self.current_season,
+                        "from": start_date,
+                        "to": end_date
+                    },
+                    description=f"Partite Ligue 1 per quote dal {start_date} al {end_date}",
+                    priority=1
+                ))
+            else:
+                # Fallback: partite di oggi per quote
+                calls.append(APICall(
+                    endpoint="fixtures",
+                    params={"date": start_date},
+                    description="Quote per partite di oggi",
+                    priority=2
+                ))
         
         return calls
     
@@ -945,17 +1237,95 @@ class FootballAPIMapper:
         return calls
     
     def _handle_general_query(self, question: str) -> List[APICall]:
-        """Gestisce domande generiche come fallback"""
+        """Gestisce domande generiche come fallback con filtri intelligenti"""
         calls = []
         
-        # Fallback: partite di oggi
-        today = datetime.now().strftime('%Y-%m-%d')
-        calls.append(APICall(
-            endpoint="fixtures",
-            params={"date": today},
-            description="Partite di oggi come fallback",
-            priority=3
-        ))
+        # 🔍 PRIORITÀ: Se viene menzionata una squadra specifica, cerca le sue partite
+        team_name = self._extract_team_name(question)
+        if team_name:
+            logger.info(f"[GENERAL QUERY] Detected team: {team_name}")
+            
+            # 1. Cerca prima l'ID della squadra
+            calls.append(APICall(
+                endpoint="teams",
+                params={"search": team_name},
+                description=f"Ricerca squadra {team_name}",
+                priority=1
+            ))
+            
+            # 2. Cerca le prossime partite della squadra (usando il nome, poi l'ID verrà risolto)
+            today = datetime.now()
+            end_date = (today + timedelta(days=30)).strftime('%Y-%m-%d')  # Prossimi 30 giorni
+            
+            calls.append(APICall(
+                endpoint="fixtures",
+                params={
+                    "team": team_name,  # Questo verrà convertito in ID dalla logica di esecuzione
+                    "season": self.current_season,
+                    "from": today.strftime('%Y-%m-%d'),
+                    "to": end_date,
+                    "status": "NS"  # Solo partite non iniziate
+                },
+                description=f"Prossime partite di {team_name}",
+                priority=1
+            ))
+            
+            # 3. Cerca anche le ultime partite giocate
+            start_date = (today - timedelta(days=30)).strftime('%Y-%m-%d')  # Ultimi 30 giorni
+            
+            calls.append(APICall(
+                endpoint="fixtures",
+                params={
+                    "team": team_name,
+                    "season": self.current_season,
+                    "from": start_date,
+                    "to": today.strftime('%Y-%m-%d'),
+                    "status": "FT"  # Solo partite finite
+                },
+                description=f"Ultime partite di {team_name}",
+                priority=2
+            ))
+            
+            return calls
+        
+        # Analizza se la richiesta menziona campionati europei o maggiori
+        elif any(word in question for word in ['europei', 'europe', 'maggiori', 'principali']):
+            # Invece di recuperare tutte le partite, recupera solo dai top campionati
+            today = datetime.now()
+            start_date = today.strftime('%Y-%m-%d')
+            end_date = (today + timedelta(days=7)).strftime('%Y-%m-%d')
+            
+            # Top 5 campionati europei
+            top_leagues = [
+                (135, "Serie A"),
+                (39, "Premier League"), 
+                (140, "La Liga"),
+                (78, "Bundesliga"),
+                (61, "Ligue 1")
+            ]
+            
+            for league_id, league_name in top_leagues:
+                calls.append(APICall(
+                    endpoint="fixtures",
+                    params={
+                        "league": league_id,
+                        "season": self.current_season,
+                        "from": start_date,
+                        "to": end_date,
+                        "status": "NS"  # Solo partite non iniziate
+                    },
+                    description=f"Prossime partite {league_name}",
+                    priority=1
+                ))
+        else:
+            # Fallback standard: partite di oggi
+            today = datetime.now().strftime('%Y-%m-%d')
+            calls.append(APICall(
+                endpoint="fixtures",
+                params={"date": today},
+                description="Partite di oggi come fallback",
+                priority=3
+            ))
         
         return calls
 
