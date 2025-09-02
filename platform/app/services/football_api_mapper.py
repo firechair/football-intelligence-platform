@@ -116,39 +116,49 @@ class FootballAPIMapper:
             calls = self._handle_past_matches(question)
             api_calls.extend(calls)
         
-        # 4. STATISTICHE SQUADRE
+        # 4. INFORMAZIONI DETTAGLIATE TRA DUE SQUADRE (priorità alta)
+        elif self._is_team_comparison_query(question):
+            calls = self._handle_team_comparison(question)
+            api_calls.extend(calls)
+        
+        # 5. STATISTICHE SQUADRE
         elif self._is_team_stats_query(question):
             calls = self._handle_team_stats(question)
             api_calls.extend(calls)
         
-        # 5. CLASSIFICHE
+        # 6. CLASSIFICHE
         elif self._is_standings_query(question):
             calls = self._handle_standings(question)
             api_calls.extend(calls)
         
-        # 6. GIOCATORI/ROSA
+        # 7. GIOCATORI/ROSA
         elif self._is_players_query(question):
             calls = self._handle_players(question)
             api_calls.extend(calls)
         
-        # 7. INFORTUNI
+        # 8. INFORTUNI
         elif self._is_injuries_query(question):
             calls = self._handle_injuries(question)
             api_calls.extend(calls)
         
-        # 8. TRASFERIMENTI
+        # 9. TRASFERIMENTI
         elif self._is_transfers_query(question):
             calls = self._handle_transfers(question)
             api_calls.extend(calls)
             
-        # 9. FALLBACK - prova a cercare squadre/campionati generici
+        # 10. FALLBACK - prova a cercare squadre/campionati generici
         else:
             calls = self._handle_general_query(question)
             api_calls.extend(calls)
         
-        # Ordina per priorità e limita a max 3 chiamate
+        # Ordina per priorità
         api_calls.sort(key=lambda x: x.priority)
-        return api_calls[:3]
+        
+        # Per team comparison, permetti più chiamate
+        if self._is_team_comparison_query(question):
+            return api_calls[:10]  # Limite più alto per confronti
+        else:
+            return api_calls[:3]   # Limite normale per altre query
     
     def _is_upcoming_matches_query(self, question: str) -> bool:
         """Rileva domande sulle partite future"""
@@ -199,6 +209,20 @@ class FootballAPIMapper:
             'vittorie', 'sconfitte', 'pareggi', 'goal', 'media'
         ]
         return any(keyword in question for keyword in keywords)
+    
+    def _is_team_comparison_query(self, question: str) -> bool:
+        """Rileva domande per informazioni dettagliate tra due squadre"""
+        keywords = [
+            'informazioni tra', 'info tra', 'dati tra', 'statistiche tra',
+            'confronto tra', 'analisi tra', 'dettagli tra', 'che informazioni',
+            'cosa sappiamo', 'forma delle squadre', 'infortuni', 'stato forma',
+            'come stanno', 'situazione'
+        ]
+        # Controlla se ci sono due squadre menzionate
+        has_vs = any(vs_word in question.lower() for vs_word in ['vs', 'contro', 'tra', ' e '])
+        has_keywords = any(keyword in question.lower() for keyword in keywords)
+        
+        return has_keywords or (has_vs and any(info_word in question.lower() for info_word in ['informazioni', 'info', 'dati', 'statistiche', 'analisi']))
     
     def _is_standings_query(self, question: str) -> bool:
         """Rileva domande sulle classifiche"""
@@ -347,6 +371,111 @@ class FootballAPIMapper:
         
         return None
     
+    def _extract_two_teams(self, question: str) -> Optional[List[str]]:
+        """Estrae due nomi di squadre da una domanda"""
+        import re
+        
+        # Pattern per "tra X e Y", "X vs Y", "X contro Y", "come stanno X e Y"
+        patterns = [
+            r"(?:tra|between)\s+([A-Za-zÀ-ÿ0-9'\-\.\s]+)\s+(?:e|and|vs|VS|Vs|contro)\s+([A-Za-zÀ-ÿ0-9'\-\.\s]+)",
+            r"([A-Za-zÀ-ÿ0-9'\-\.\s]+)\s+(?:vs|VS|Vs|contro|\-|–)\s+([A-Za-zÀ-ÿ0-9'\-\.\s]+)",
+            r"(?:di|per|della partita)\s+([A-Za-zÀ-ÿ0-9'\-\.\s]+)\s+(?:vs|VS|Vs|contro|\-|–)\s+([A-Za-zÀ-ÿ0-9'\-\.\s]+)",
+            r"(?:come\s+stanno|situazione)\s+([A-Za-zÀ-ÿ0-9'\-\.\s]+)\s+(?:e|and)\s+([A-Za-zÀ-ÿ0-9'\-\.\s]+)",
+            r"(?:informazioni|info|dati)\s+(?:su|tra)\s+([A-Za-zÀ-ÿ0-9'\-\.\s]+)\s+(?:e|and)\s+([A-Za-zÀ-ÿ0-9'\-\.\s]+)"
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, question, re.IGNORECASE)
+            if match:
+                team1 = match.group(1).strip()
+                team2 = match.group(2).strip()
+                
+                # Pulisci i nomi delle squadre da parole comuni
+                stop_words = ['il', 'la', 'del', 'della', 'di', 'da', 'con', 'per', 'su', 'in', 'a', 'the', 'of', 'and', 'or']
+                
+                def clean_team_name(name):
+                    # Rimuovi informazioni sulla lega
+                    name = re.sub(r'\s+(?:in|della|di)\s+(?:serie\s+a|champions\s+league|europa\s+league|coppa\s+italia).*$', '', name, flags=re.IGNORECASE)
+                    
+                    words = name.split()
+                    cleaned_words = [word for word in words if word.lower() not in stop_words and len(word) > 1]
+                    return ' '.join(cleaned_words) if cleaned_words else name
+                
+                team1_clean = clean_team_name(team1)
+                team2_clean = clean_team_name(team2)
+                
+                if len(team1_clean) > 2 and len(team2_clean) > 2:
+                    # Normalizza i nomi usando il mapping esistente
+                    team1_normalized = self._normalize_team_name(team1_clean)
+                    team2_normalized = self._normalize_team_name(team2_clean)
+                    
+                    logger.info(f"[TEAM EXTRACTION] Found teams: '{team1_clean}' -> '{team1_normalized}', '{team2_clean}' -> '{team2_normalized}'")
+                    return [team1_normalized or team1_clean, team2_normalized or team2_clean]
+        
+        return None
+    
+    def _normalize_team_name(self, team_name: str) -> Optional[str]:
+        """Normalizza il nome della squadra usando il mapping esistente"""
+        team_mappings = {
+            'juventus': 'Juventus',
+            'juve': 'Juventus', 
+            'inter': 'Inter',
+            'internazionale': 'Inter',
+            'milan': 'AC Milan',
+            'ac milan': 'AC Milan',
+            'roma': 'AS Roma',
+            'as roma': 'AS Roma',
+            'napoli': 'Napoli',
+            'lazio': 'Lazio',
+            'fiorentina': 'Fiorentina',
+            'atalanta': 'Atalanta',
+            'torino': 'Torino',
+            'genoa': 'Genoa',
+            'bologna': 'Bologna',
+            'sassuolo': 'Sassuolo',
+            'udinese': 'Udinese',
+            'sampdoria': 'Sampdoria',
+            'cagliari': 'Cagliari',
+            'verona': 'Hellas Verona',
+            'hellas verona': 'Hellas Verona',
+            'spezia': 'Spezia',
+            'salernitana': 'Salernitana',
+            'empoli': 'Empoli',
+            'venezia': 'Venezia',
+            'real madrid': 'Real Madrid',
+            'real': 'Real Madrid',
+            'barcelona': 'Barcelona',
+            'barca': 'Barcelona',
+            'atletico madrid': 'Atletico Madrid',
+            'atletico': 'Atletico Madrid',
+            'sevilla': 'Sevilla',
+            'valencia': 'Valencia',
+            'villarreal': 'Villarreal',
+            'real sociedad': 'Real Sociedad',
+            'athletic bilbao': 'Athletic Bilbao',
+            'manchester united': 'Manchester United',
+            'united': 'Manchester United',
+            'manchester city': 'Manchester City',
+            'city': 'Manchester City',
+            'liverpool': 'Liverpool',
+            'chelsea': 'Chelsea',
+            'arsenal': 'Arsenal',
+            'tottenham': 'Tottenham',
+            'spurs': 'Tottenham',
+            'bayern munich': 'Bayern Munich',
+            'bayern': 'Bayern Munich',
+            'borussia dortmund': 'Borussia Dortmund',
+            'dortmund': 'Borussia Dortmund',
+            'psg': 'Paris Saint Germain',
+            'paris saint germain': 'Paris Saint Germain',
+            'paris': 'Paris Saint Germain',
+            'nizza': 'Nice',
+            'nice': 'Nice'
+        }
+        
+        team_lower = team_name.lower()
+        return team_mappings.get(team_lower)
+    
     def _get_date_range(self, question: str) -> Tuple[Optional[str], Optional[str]]:
         """Estrae il range di date dalla domanda"""
         now = datetime.now()
@@ -389,6 +518,31 @@ class FootballAPIMapper:
             saturday = now + timedelta(days=days_ahead)
             sunday = saturday + timedelta(days=1)
             return saturday.strftime('%Y-%m-%d'), sunday.strftime('%Y-%m-%d')
+        
+        # Gestione dei mesi
+        month_patterns = {
+            'gennaio': 1, 'febbraio': 2, 'marzo': 3, 'aprile': 4,
+            'maggio': 5, 'giugno': 6, 'luglio': 7, 'agosto': 8,
+            'settembre': 9, 'ottobre': 10, 'novembre': 11, 'dicembre': 12
+        }
+        
+        for month_name, month_num in month_patterns.items():
+            if month_name in question.lower():
+                # Determina l'anno - se il mese è passato quest'anno, usa l'anno prossimo
+                current_year = now.year
+                if month_num < now.month or (month_num == now.month and now.day > 15):
+                    current_year += 1
+                
+                # Primo giorno del mese
+                start_date = datetime(current_year, month_num, 1)
+                
+                # Ultimo giorno del mese
+                if month_num == 12:
+                    end_date = datetime(current_year + 1, 1, 1) - timedelta(days=1)
+                else:
+                    end_date = datetime(current_year, month_num + 1, 1) - timedelta(days=1)
+                
+                return start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')
         
         return None, None
 
@@ -926,13 +1080,21 @@ class FootballAPIMapper:
                     priority=1
                 ))
             else:
-                # Fallback per altri paesi
-                calls.append(APICall(
-                    endpoint="predictions",
-                    params={"days": 3},
-                    description="Predizioni generali per le prossime partite",
-                    priority=2
-                ))
+                # Fallback per altri paesi - usa predizioni generali migliorato
+                if any(word in question.lower() for word in ['oggi', 'today', 'stasera', 'questa sera']):
+                    calls.append(APICall(
+                        endpoint="predictions",
+                        params={"days": 1},
+                        description="Predizioni per le partite di oggi con fallback al database",
+                        priority=1
+                    ))
+                else:
+                    calls.append(APICall(
+                        endpoint="predictions",
+                        params={"days": 7},
+                        description="Predizioni generali per le prossime partite con fallback al database",
+                        priority=2
+                    ))
         else:
             # Controlla se menziona campionati specifici anche senza riconoscimento automatico
             if 'serie a' in question.lower():
@@ -996,13 +1158,23 @@ class FootballAPIMapper:
                     priority=1
                 ))
             else:
-                # Fallback: predizioni generali
-                calls.append(APICall(
-                    endpoint="predictions",
-                    params={"days": 3},
-                    description="Predizioni generali per le prossime partite",
-                    priority=2
-                ))
+                # Fallback: predizioni generali migliorato
+                # Controlla se chiede specificamente per "oggi"
+                if any(word in question.lower() for word in ['oggi', 'today', 'stasera', 'questa sera']):
+                    calls.append(APICall(
+                        endpoint="predictions",
+                        params={"days": 1},
+                        description="Predizioni per le partite di oggi con fallback al database",
+                        priority=1
+                    ))
+                else:
+                    # Predizioni generali per i prossimi giorni
+                    calls.append(APICall(
+                        endpoint="predictions",
+                        params={"days": 7},
+                        description="Predizioni generali per le prossime partite con fallback al database",
+                        priority=2
+                    ))
         
         return calls
     
@@ -1149,15 +1321,35 @@ class FootballAPIMapper:
         team = self._extract_team_name(question)
         league = self._extract_league(question)
         
-        if team and league:
-            # Cerca prima l'ID della squadra, poi le statistiche
+        if team:
+            # Cerca prima l'ID della squadra
             calls.append(APICall(
                 endpoint="teams",
                 params={"search": team},
                 description=f"Ricerca squadra {team}",
                 priority=1
             ))
-            # Nota: dovremmo fare una seconda chiamata con l'ID trovato
+            
+            # Aggiungi chiamate per statistiche dettagliate
+            if league:
+                calls.append(APICall(
+                    endpoint="teams/statistics",
+                    params={
+                        "team": team,
+                        "league": league['league'],
+                        "season": self.current_season
+                    },
+                    description=f"Statistiche {team} in {league.get('name', 'campionato')}",
+                    priority=1
+                ))
+            
+            # Infortuni della squadra
+            calls.append(APICall(
+                endpoint="injuries",
+                params={"team": team},
+                description=f"Infortuni {team}",
+                priority=2
+            ))
         
         return calls
     
@@ -1215,6 +1407,73 @@ class FootballAPIMapper:
                 endpoint="teams",
                 params={"search": team},
                 description=f"Ricerca squadra {team} per infortuni",
+                priority=1
+            ))
+        
+        return calls
+    
+    def _handle_team_comparison(self, question: str) -> List[APICall]:
+        """Gestisce richieste di informazioni dettagliate tra due squadre"""
+        calls = []
+        
+        # Estrai entrambe le squadre dalla domanda
+        teams = self._extract_two_teams(question)
+        league = self._extract_league(question)
+        
+        if teams and len(teams) == 2:
+            team1, team2 = teams
+            
+            # Per ogni squadra, recupera informazioni complete
+            for team in [team1, team2]:
+                # 1. Cerca l'ID della squadra
+                calls.append(APICall(
+                    endpoint="teams",
+                    params={"search": team},
+                    description=f"Ricerca squadra {team}",
+                    priority=1
+                ))
+                
+                # 2. Statistiche della squadra
+                if league:
+                    calls.append(APICall(
+                        endpoint="teams/statistics",
+                        params={
+                            "team": team,
+                            "league": league['league'],
+                            "season": self.current_season
+                        },
+                        description=f"Statistiche {team}",
+                        priority=1
+                    ))
+                
+                # 3. Ultime partite per valutare la forma
+                calls.append(APICall(
+                    endpoint="fixtures",
+                    params={
+                        "team": team,
+                        "last": 5,
+                        "season": self.current_season
+                    },
+                    description=f"Ultime 5 partite {team}",
+                    priority=1
+                ))
+                
+                # 4. Infortuni
+                calls.append(APICall(
+                    endpoint="injuries",
+                    params={"team": team},
+                    description=f"Infortuni {team}",
+                    priority=2
+                ))
+            
+            # 5. Head-to-head tra le due squadre
+            calls.append(APICall(
+                endpoint="fixtures/headtohead",
+                params={
+                    "h2h": f"{team1}-{team2}",
+                    "last": 10
+                },
+                description=f"Precedenti {team1} vs {team2}",
                 priority=1
             ))
         

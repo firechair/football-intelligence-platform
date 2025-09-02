@@ -16,6 +16,7 @@ class IntentType(Enum):
     STATISTICS = "statistics"
     OPEN_EVENT = "open_event"
     OPEN_EVENT_SECTION = "open_event_section"  # Nuovo intent per aprire sezioni specifiche
+    TEAM_COMPARISON = "team_comparison"  # Nuovo intent per informazioni dettagliate tra squadre
     HELP = "help"
     GREETING = "greeting"
     UNKNOWN = "unknown"
@@ -165,6 +166,9 @@ class IntentDetector:
                         r"(?:apri|mostra|aprimi|mostrami)\s+(?:l['\s]+)?(?:evento|partita|match)\s+([\w\s]+(?:\s+vs\s+[\w\s]+)?)",
                         r"(?:apri|mostra|aprimi|mostrami)\s+(?:l['\s]+)?(?:evento|partita|match)\s+(?:di|per)\s+([\w\s]+(?:\s+vs\s+[\w\s]+)?)",
                         r"(?:apri|mostra|aprimi|mostrami)\s+(?:l['\s]+)?(?:evento|partita|match)\s+(?:relativa\s+a|di|per)\s+([\w\s]+(?:\s+vs\s+[\w\s]+)?)",
+                        # Pattern specifici per catturare "U contro Manchester United U21"
+                        r"(?:apri|mostra|aprimi|mostrami)\s+(?:l['\s]+)?(?:evento|partita|match)\s+(?:dell['\s]+evento\s+)?([A-Za-z0-9]+)\s+(?:contro|vs)\s+([\w\s]+)",
+                        r"(?:apri|mostra|aprimi|mostrami)\s+(?:l['\s]+)?(?:evento|partita|match)\s+(?:dell['\s]+evento\s+)?([\w\s]+)\s+(?:contro|vs)\s+([A-Za-z0-9\s]+)",
                         # Pattern per "Apri l'evento Team1 vs Team2"
                         r"(?:apri|mostra|aprimi|mostrami)\s+(?:l['\s]+)?(?:evento|partita|match)\s+([\w\s]+)\s+vs\s+([\w\s]+)",
                         r"(?:apri|mostra|aprimi|mostrami)\s+(?:l['\s]+)?(?:evento|partita|match)\s+(?:tra|contro)\s+([\w\s]+)\s+e\s+([\w\s]+)",
@@ -223,6 +227,22 @@ class IntentDetector:
                         r"vai\s+(?:alla\s+)?(?:sezione\s+)?(?:overview|panoramica)"
                     ],
                     "entities": ["team_or_match", "section"],
+                    "confidence": ConfidenceLevel.HIGH
+                }
+            ],
+            
+            IntentType.TEAM_COMPARISON: [
+                {
+                    "patterns": [
+                        r"informazioni\s+(?:tra|su)\s+(.+?)\s+(?:e|vs|contro)\s+(.+)",
+                        r"(?:analisi|confronto|statistiche)\s+(?:tra|di)\s+(.+?)\s+(?:e|vs|contro)\s+(.+)",
+                        r"(?:forma|stato)\s+(?:di|delle)\s+(.+?)\s+(?:e|vs|contro)\s+(.+)",
+                        r"(?:infortuni|giocatori)\s+(?:di|delle)\s+(.+?)\s+(?:e|vs|contro)\s+(.+)",
+                        r"(?:come\s+stanno|situazione)\s+(.+?)\s+(?:e|vs|contro)\s+(.+)",
+                        r"(.+?)\s+(?:vs|contro)\s+(.+?)\s+(?:informazioni|statistiche|analisi)",
+                        r"che\s+(?:informazioni|dati)\s+(?:abbiamo|hai)\s+(?:su|tra)\s+(.+?)\s+(?:e|vs|contro)\s+(.+)"
+                    ],
+                    "entities": ["team1", "team2", "league"],
                     "confidence": ConfidenceLevel.HIGH
                 }
             ],
@@ -371,17 +391,61 @@ class IntentDetector:
         """Estrae entità dal testo usando i pattern"""
         entities = {}
         normalized = self.normalize_text(text)
+        print(f"[DEBUG ENTITIES] Testo normalizzato: '{normalized}'")
+        print(f"[DEBUG ENTITIES] Pattern da testare: {patterns}")
         
+        # Controllo speciale per TEAM_COMPARISON
+        if "team1" in entity_names and "team2" in entity_names:
+            # Pattern specifici per estrarre due squadre
+            team_patterns = [
+                r"informazioni\s+(?:tra|su)\s+(.+?)\s+(?:e|vs|contro)\s+(.+)",
+                r"(?:analisi|confronto|statistiche)\s+(?:tra|di)\s+(.+?)\s+(?:e|vs|contro)\s+(.+)",
+                r"(?:forma|stato)\s+(?:di|delle)\s+(.+?)\s+(?:e|vs|contro)\s+(.+)",
+                r"(?:infortuni|giocatori)\s+(?:di|delle)\s+(.+?)\s+(?:e|vs|contro)\s+(.+)",
+                r"(?:come\s+stanno|situazione)\s+(.+?)\s+(?:e|vs|contro)\s+(.+)",
+                r"(.+?)\s+(?:vs|contro)\s+(.+?)\s+(?:informazioni|statistiche|analisi)",
+                r"che\s+(?:informazioni|dati)\s+(?:abbiamo|hai)\s+(?:su|tra)\s+(.+?)\s+(?:e|vs|contro)\s+(.+)"
+            ]
+            
+            for pattern in team_patterns:
+                match = re.search(pattern, normalized, re.IGNORECASE)
+                if match and len(match.groups()) >= 2:
+                    team1 = match.group(1).strip()
+                    team2 = match.group(2).strip()
+                    
+                    # Pulizia dei nomi delle squadre
+                    team1 = re.sub(r'^(?:la|il|del|della|di)\s+', '', team1, flags=re.IGNORECASE).strip()
+                    team2 = re.sub(r'^(?:la|il|del|della|di)\s+', '', team2, flags=re.IGNORECASE).strip()
+                    
+                    # Rimuovi informazioni sulla lega dai nomi delle squadre
+                    team1 = re.sub(r'\s+(?:in|della|di)\s+(?:serie\s+a|champions\s+league|europa\s+league|coppa\s+italia).*$', '', team1, flags=re.IGNORECASE).strip()
+                    team2 = re.sub(r'\s+(?:in|della|di)\s+(?:serie\s+a|champions\s+league|europa\s+league|coppa\s+italia).*$', '', team2, flags=re.IGNORECASE).strip()
+                    
+                    if team1 and team2 and len(team1) > 1 and len(team2) > 1:
+                        entities["team1"] = team1
+                        entities["team2"] = team2
+                        print(f"[DEBUG ENTITIES] Estratte squadre - Team1: '{team1}', Team2: '{team2}'")
+                        # Estrai anche la lega se presente
+                        league_match = re.search(r'(?:in|della|di)\s+(serie\s+a|champions\s+league|europa\s+league|coppa\s+italia)', normalized, re.IGNORECASE)
+                        if league_match:
+                            entities["league"] = league_match.group(1).strip()
+                        return entities  # Ritorna subito per evitare sovrascritture
+        
+        # Logica originale per altri tipi di entità
         for pattern in patterns:
             matches = re.findall(pattern, text, re.IGNORECASE)
             if matches:
+                print(f"[DEBUG ENTITIES] Pattern matched: '{pattern}'")
+                print(f"[DEBUG ENTITIES] Match trovati: {matches}")
                 for i, entity_name in enumerate(entity_names):
                     if i < len(matches):
                         if isinstance(matches[i], tuple):
+                            print(f"[DEBUG ENTITIES] Match è una tupla: {matches[i]}")
                             # Se abbiamo due gruppi di cattura (team1 vs team2)
                             if len(matches[i]) == 2:
                                 team1 = matches[i][0].strip()
                                 team2 = matches[i][1].strip()
+                                print(f"[DEBUG ENTITIES] Team1 grezzo: '{team1}', Team2 grezzo: '{team2}'")
                                 
                                 # Pulizia dei nomi delle squadre
                                 team1 = re.sub(r'^(?:Apri|Mostrami|la|pagina|evento|per|del|match|di)\s+', '', team1, flags=re.IGNORECASE).strip()
@@ -393,21 +457,28 @@ class IntentDetector:
                                     team1 = team1.replace(word, "").strip()
                                     team2 = team2.replace(word, "").strip()
                                 
+                                print(f"[DEBUG ENTITIES] Team1 pulito: '{team1}', Team2 pulito: '{team2}'")
+                                
                                 if team1 and team2 and len(team1) > 2 and len(team2) > 2:
                                     entities[entity_name] = f"{team1} vs {team2}"
-                                    print(f"[DEBUG INTENT] Estratto team_or_match: '{entities[entity_name]}' da '{text}'")
+                                    print(f"[DEBUG ENTITIES] Estratto team_or_match: '{entities[entity_name]}' da '{text}'")
                                     break
                             else:
                                 # Fallback per tuple con un solo elemento
                                 entities[entity_name] = matches[i][0].strip()
+                                print(f"[DEBUG ENTITIES] Estratta entità da tupla singola: '{entities[entity_name]}'")
                         else:
                             value = matches[i].strip()
+                            print(f"[DEBUG ENTITIES] Match singolo: '{value}'")
                             # Mappa le destinazioni specifiche
                             if entity_name == "destination":
                                 value = self.map_destination(value)
+                                print(f"[DEBUG ENTITIES] Destinazione mappata: '{value}'")
                             entities[entity_name] = value
+                            print(f"[DEBUG ENTITIES] Entità assegnata: {entity_name} = '{value}'")
                 break
         
+        print(f"[DEBUG ENTITIES] Entità finali estratte: {entities}")
         return entities
     
     def map_destination(self, destination: str) -> str:
@@ -862,4 +933,4 @@ class IntentDetector:
             "entities": entities,
             "patterns_matched": patterns_matched,
             "needs_clarification": needs_clarification
-        } 
+        }
