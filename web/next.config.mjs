@@ -15,7 +15,8 @@ const nextConfig = {
       'media.api-sports.io',
       'upload.wikimedia.org',
       'www.thesportsdb.com',
-      'crests.football-data.org'
+      'crests.football-data.org',
+      'flagcdn.com'
     ],
     formats: ['image/webp', 'image/avif'],
   },
