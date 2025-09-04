@@ -17,7 +17,7 @@ class SessionManager:
     """Gestisce le sessioni utente con tracking avanzato e cleanup automatico"""
     
     def __init__(self):
-        self._session_expire_hours = 24 * 7  # 7 giorni default
+        self._session_expire_hours = 4  # 4 ore come richiesto
         self._max_sessions_per_user = 10
         self._cleanup_interval = 3600  # 1 ora
         self._last_cleanup = datetime.utcnow()
@@ -84,15 +84,22 @@ class SessionManager:
         user_id: int,
         include_inactive: bool = False
     ) -> List[SessionOut]:
-        """Ottieni tutte le sessioni dell'utente"""
+        """Ottieni tutte le sessioni dell'utente considerando l'inattività"""
         try:
             query = db.query(SessionModel).filter(SessionModel.user_id == user_id)
             
             if not include_inactive:
+                now = datetime.utcnow()
+                inactivity_cutoff = now - timedelta(hours=self._session_expire_hours)
+                
                 query = query.filter(
                     and_(
                         SessionModel.is_active == True,
-                        SessionModel.expires_at > datetime.utcnow()
+                        SessionModel.expires_at > now,
+                        or_(
+                            SessionModel.last_activity.is_(None),  # Sessioni appena create
+                            SessionModel.last_activity > inactivity_cutoff  # Sessioni attive negli ultimi 4 ore
+                        )
                     )
                 )
             
@@ -212,23 +219,41 @@ class SessionManager:
             return 0
     
     def is_session_active(self, session: SessionModel) -> bool:
-        """Verifica se la sessione è ancora attiva"""
+        """Verifica se la sessione è ancora attiva basandosi sull'inattività"""
         if not session:
             return False
         
-        return (
-            session.is_active and
-            session.expires_at > datetime.utcnow()
-        )
+        # Controlla se la sessione è marcata come attiva
+        if not session.is_active:
+            return False
+        
+        # Controlla se la sessione è scaduta per inattività (4 ore dall'ultima attività)
+        if session.last_activity:
+            inactivity_limit = session.last_activity + timedelta(hours=self._session_expire_hours)
+            if datetime.utcnow() > inactivity_limit:
+                return False
+        
+        # Controlla anche la scadenza assoluta come fallback
+        return session.expires_at > datetime.utcnow()
     
     def cleanup_expired_sessions(self, db: DBSession) -> int:
-        """Rimuovi sessioni scadute dal database"""
+        """Rimuovi sessioni scadute dal database (per scadenza assoluta o inattività)"""
         try:
-            # Trova sessioni scadute
+            now = datetime.utcnow()
+            inactivity_cutoff = now - timedelta(hours=self._session_expire_hours)
+            
+            # Trova sessioni scadute per:
+            # 1. Scadenza assoluta
+            # 2. Inattività (last_activity più vecchia di 4 ore)
+            # 3. Sessioni marcate come non attive
             expired_sessions = db.query(SessionModel).filter(
                 or_(
-                    SessionModel.expires_at <= datetime.utcnow(),
-                    SessionModel.is_active == False
+                    SessionModel.expires_at <= now,
+                    SessionModel.is_active == False,
+                    and_(
+                        SessionModel.last_activity.isnot(None),
+                        SessionModel.last_activity <= inactivity_cutoff
+                    )
                 )
             ).all()
             
@@ -240,7 +265,7 @@ class SessionManager:
                     db.delete(session)
                 
                 db.commit()
-                logger.info(f"Cleaned up {count} expired sessions")
+                logger.info(f"Cleaned up {count} expired sessions (absolute expiry + inactivity)")
             
             return count
             
@@ -250,12 +275,19 @@ class SessionManager:
             return 0
     
     def _get_user_active_sessions_count(self, db: DBSession, user_id: int) -> int:
-        """Conta sessioni attive dell'utente"""
+        """Conta sessioni attive dell'utente considerando l'inattività"""
+        now = datetime.utcnow()
+        inactivity_cutoff = now - timedelta(hours=self._session_expire_hours)
+        
         return db.query(SessionModel).filter(
             and_(
                 SessionModel.user_id == user_id,
                 SessionModel.is_active == True,
-                SessionModel.expires_at > datetime.utcnow()
+                SessionModel.expires_at > now,
+                or_(
+                    SessionModel.last_activity.is_(None),  # Sessioni appena create
+                    SessionModel.last_activity > inactivity_cutoff  # Sessioni attive negli ultimi 4 ore
+                )
             )
         ).count()
     

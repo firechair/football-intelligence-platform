@@ -162,10 +162,26 @@ class IntentDetector:
             IntentType.OPEN_EVENT: [
                 {
                     "patterns": [
-                        # Pattern semplici e flessibili
+                        # Pattern specifici con nome evento (devono essere prima di quelli generici)
+                        r"(?:vai|va)\s+(?:a|all['\s]+|alla\s+)?(?:evento|partita|match)\s+(?:del|della|di)\s+([\w\s]+)",
+                        r"(?:portami|spostami|naviga)\s+(?:a|all['\s]+|alla\s+)?(?:evento|partita|match)\s+([\w\s]+(?:\s+vs\s+[\w\s]+)?)",
+                        r"(?:portami|spostami|naviga)\s+(?:a|all['\s]+|alla\s+)?(?:evento|partita|match)\s+(?:di|per|tra)\s+([\w\s]+(?:\s+vs\s+[\w\s]+)?)",
+                        # Pattern generici senza nome evento specifico
+                        r"(?:portami|spostami|naviga)\s+(?:a|all['\s]+|alla\s+)?(?:evento|partita|match)(?:\s+corrente|\s+attuale)?",
+                        r"(?:apri|mostra|aprimi|mostrami)\s+(?:l['\s]+)?(?:evento|partita|match)(?:\s+corrente|\s+attuale)?",
+                        r"(?:vai|va)\s+(?:a|all['\s]+|alla\s+)?(?:evento|partita|match)",
+                        r"ti\s+apro\s*$",
+                        # Pattern semplici e flessibili con nome evento
                         r"(?:apri|mostra|aprimi|mostrami)\s+(?:l['\s]+)?(?:evento|partita|match)\s+([\w\s]+(?:\s+vs\s+[\w\s]+)?)",
                         r"(?:apri|mostra|aprimi|mostrami)\s+(?:l['\s]+)?(?:evento|partita|match)\s+(?:di|per)\s+([\w\s]+(?:\s+vs\s+[\w\s]+)?)",
                         r"(?:apri|mostra|aprimi|mostrami)\s+(?:l['\s]+)?(?:evento|partita|match)\s+(?:relativa\s+a|di|per)\s+([\w\s]+(?:\s+vs\s+[\w\s]+)?)",
+                        # Pattern per "apri la partita dell' Itapirense" con apostrofo
+                        r"(?:apri|mostra|aprimi|mostrami)\s+(?:la\s+)?(?:evento|partita|match)\s+dell['\s]+([\w\s]+(?:\s+vs\s+[\w\s]+)?)",
+                        # Pattern più semplice per catturare "dell Itapirense"
+                        r"(?:apri|mostra|aprimi|mostrami)\s+(?:la\s+)?(?:evento|partita|match)\s+dell\s+([A-Za-z0-9\s]+)",
+                        # Pattern per "portami all'evento" con nome
+                        r"(?:portami|spostami|naviga)\s+(?:a|all['\s]+|alla\s+)?(?:evento|partita|match)\s+([\w\s]+(?:\s+vs\s+[\w\s]+)?)",
+                        r"(?:portami|spostami|naviga)\s+(?:a|all['\s]+|alla\s+)?(?:evento|partita|match)\s+(?:di|per|tra)\s+([\w\s]+(?:\s+vs\s+[\w\s]+)?)",
                         # Pattern specifici per catturare "U contro Manchester United U21"
                         r"(?:apri|mostra|aprimi|mostrami)\s+(?:l['\s]+)?(?:evento|partita|match)\s+(?:dell['\s]+evento\s+)?([A-Za-z0-9]+)\s+(?:contro|vs)\s+([\w\s]+)",
                         r"(?:apri|mostra|aprimi|mostrami)\s+(?:l['\s]+)?(?:evento|partita|match)\s+(?:dell['\s]+evento\s+)?([\w\s]+)\s+(?:contro|vs)\s+([A-Za-z0-9\s]+)",
@@ -535,13 +551,22 @@ class IntentDetector:
                         if re.match(pattern, text, re.IGNORECASE):
                             confidence += 0.1
                         
+                        print(f"[DEBUG INTENT] Pattern matched: '{pattern}' for intent {intent_type}")
+                        print(f"[DEBUG INTENT] Entities to extract: {pattern_config['entities']}")
+                        entities = self.extract_entities(
+                            text, 
+                            [pattern], 
+                            pattern_config["entities"]
+                        )
+                        print(f"[DEBUG INTENT] Extracted entities: {entities}")
+                        
+                        # Bonus per intent con entità estratte (più specifici)
+                        if entities and any(entities.values()):
+                            confidence += 0.2
+                            print(f"[DEBUG INTENT] Bonus for entities: +0.2, new confidence: {confidence}")
+                        
                         if confidence > highest_confidence:
-                            entities = self.extract_entities(
-                                text, 
-                                [pattern], 
-                                pattern_config["entities"]
-                            )
-                            
+                            print(f"[DEBUG INTENT] New best match: {intent_type} with confidence {confidence}")
                             best_match = IntentMatch(
                                 intent_type=intent_type,
                                 confidence=min(confidence, 1.0),
@@ -551,6 +576,8 @@ class IntentDetector:
                                 patterns_matched=[pattern]
                             )
                             highest_confidence = confidence
+                        else:
+                            print(f"[DEBUG INTENT] Not better than current best: {confidence} <= {highest_confidence}")
         
         if best_match:
             return best_match
@@ -666,7 +693,7 @@ class IntentDetector:
                 print(f"[DEBUG INTENT] Estratta league: '{entities['league']}' da frase: '{message}'")
             else:
                 # Fallback: estrai solo la parte dopo 'del', 'di', 'per', ecc.
-                match = re.search(r"(?:del|di|per|della|dello|dell'|delle|dell' )\s+([a-zA-ZÀ-ÿ0-9'\-\.\s]{3,})", message, re.IGNORECASE)
+                match = re.search(r"(?:del|di|per|della|dello|dell'|delle|dell)\s+([a-zA-ZÀ-ÿ0-9'\-\.\s]{3,})", message, re.IGNORECASE)
                 if match:
                     candidate = match.group(1).strip()
                     words = re.findall(r"[a-zA-ZÀ-ÿ0-9'\-]{3,}", candidate)
@@ -678,18 +705,21 @@ class IntentDetector:
                     if words:
                         filtered = [w for w in words if w.lower() not in banned_words]
                         if filtered:
-                            team_entity = filtered[-1]
+                            # Prendi tutte le parole filtrate, non solo l'ultima
+                            team_entity = " ".join(filtered)
                             team_entity_norm = team_entity.lower()
                             for suffix in [" w", " women", " femminile", " ladies", " girls"]:
                                 if team_entity_norm.endswith(suffix):
                                     team_entity = team_entity_norm.replace(suffix, "") + " w"
                             entities["team_or_match"] = team_entity
+                            print(f"[DEBUG PROCESS_INTENT] Estratto team_or_match: '{team_entity}' da pattern 'dell'")
                     else:
                         # Controlla anche il candidato completo
                         section_keywords = ["classifica", "standings", "quote", "odds", "formazioni", "lineups", "statistiche", "stats", "scontri", "diretti", "h2h", "overview", "panoramica"]
                         if candidate.lower() not in section_keywords and candidate.lower() not in banned_words:
                             entities["team_or_match"] = candidate
-        # --- Nuovo pattern: estrai 'team_or_match' da frasi con 'vs' o '-' ---
+                            print(f"[DEBUG PROCESS_INTENT] Estratto team_or_match: '{candidate}' da candidato completo")
+        # --- Nuovo pattern: estrai 'team_or_match' da frasi con 'vs', 'contro' o '-' ---
         # Pattern più specifico per estrarre solo i nomi delle squadre
         match_vs = re.search(r"(?:tra|contro)\s+([A-Za-zÀ-ÿ0-9'\-\.\s]+)\s+(?:e|vs|VS|Vs|\-|–)\s+([A-Za-zÀ-ÿ0-9'\-\.\s]+)", message, re.IGNORECASE)
         if match_vs:
@@ -698,16 +728,24 @@ class IntentDetector:
             if team1 and team2:
                 entities["team_or_match"] = f"{team1} vs {team2}"
         else:
-            # Pattern per "di [squadra1] vs [squadra2]"
-            match_di_vs = re.search(r"(?:di|per)\s+([A-Za-zÀ-ÿ0-9'\-\.\s]+)\s+(?:vs|VS|Vs)\s+([A-Za-zÀ-ÿ0-9'\-\.\s]+)", message, re.IGNORECASE)
-            if match_di_vs:
-                team1 = match_di_vs.group(1).strip()
-                team2 = match_di_vs.group(2).strip()
+            # Pattern specifico per "Apri l'evento [Team1] contro [Team2]"
+            match_contro = re.search(r"(?:apri|mostra|aprimi|mostrami)\s+(?:l['\'\s]+)?(?:evento|partita|match)\s+([A-Za-zÀ-ÿ0-9'\-\.\s]+)\s+contro\s+([A-Za-zÀ-ÿ0-9'\-\.\s]+)", message, re.IGNORECASE)
+            if match_contro:
+                team1 = match_contro.group(1).strip()
+                team2 = match_contro.group(2).strip()
                 if team1 and team2:
                     entities["team_or_match"] = f"{team1} vs {team2}"
             else:
-                # Pattern alternativo per "vs" senza "tra" - approccio più robusto
-                match_vs_alt = re.search(r"([A-Za-zÀ-ÿ0-9'\-\.\s]+)\s+(?:vs|VS|Vs|\-|–)\s+([A-Za-zÀ-ÿ0-9'\-\.\s]+)", message, re.IGNORECASE)
+                # Pattern per "di [squadra1] vs [squadra2]"
+                match_di_vs = re.search(r"(?:di|per)\s+([A-Za-zÀ-ÿ0-9'\-\.\s]+)\s+(?:vs|VS|Vs)\s+([A-Za-zÀ-ÿ0-9'\-\.\s]+)", message, re.IGNORECASE)
+                if match_di_vs:
+                    team1 = match_di_vs.group(1).strip()
+                    team2 = match_di_vs.group(2).strip()
+                    if team1 and team2:
+                        entities["team_or_match"] = f"{team1} vs {team2}"
+                else:
+                     # Pattern alternativo per "vs" senza "tra" - approccio più robusto
+                     match_vs_alt = re.search(r"([A-Za-zÀ-ÿ0-9'\-\.\s]+)\s+(?:vs|VS|Vs|\-|–)\s+([A-Za-zÀ-ÿ0-9'\-\.\s]+)", message, re.IGNORECASE)
                 if match_vs_alt:
                     team1 = match_vs_alt.group(1).strip()
                     team2 = match_vs_alt.group(2).strip()
@@ -829,9 +867,10 @@ class IntentDetector:
             confidence = 0.9
             patterns_matched.append("features_navigation")
         # Pattern per eventi e sezioni specifiche
-        elif any(x in msg for x in ["apri", "aprimi", "mostra", "mostrami", "puoi"]) and any(x in msg for x in ["evento", "partita", "match", "pagina"]):
-            # Controlla se è una richiesta di sezione specifica
-            if any(x in msg for x in ["classifica", "quote", "formazioni", "scontri diretti", "scontri", "overview", "panoramica"]):
+        elif any(x in msg for x in ["apri", "aprimi", "mostra", "mostrami", "puoi", "vai", "naviga", "spostami", "portami"]) and any(x in msg for x in ["evento", "partita", "match", "pagina"]):
+            # Controlla se è una richiesta di sezione specifica (deve contenere esplicitamente "sezione" o parole di sezione)
+            if ("sezione" in msg and any(x in msg for x in ["classifica", "quote", "formazioni", "scontri diretti", "scontri", "overview", "panoramica"])) or \
+               (any(x in msg for x in ["apri la classifica", "mostra la classifica", "apri le quote", "mostra le quote", "apri le formazioni", "mostra le formazioni"])):
                 intent = "open_event_section"
                 confidence = 0.9
             else:
