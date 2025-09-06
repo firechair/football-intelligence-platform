@@ -162,6 +162,7 @@ def register_user(user: UserCreate, request: Request, db: Session = Depends(get_
                 self.preferences = json.loads(row.preferences) if row.preferences else {}
                 self.created_at = row.created_at
                 self.email_verified = row.email_verified or False
+                self.email_verification_token = getattr(row, 'email_verification_token', None)
                 self.two_factor_enabled = row.two_factor_enabled or False
         
         new_user = UserResponse(new_user_data)
@@ -436,11 +437,23 @@ def refresh_token(token_data: TokenRefresh, request: Request = None, db: Session
             detail="Session expired or invalid"
         )
     
-    # Blacklist old refresh token
-    auth.logout_user(token_data.refresh_token, db, current_session.session_id if current_session else None)
+    # Blacklist old refresh token without terminating session
+    security_service.blacklist_token(token_data.refresh_token)
     
-    # Create new token pair
+    # Create new token pair with existing session if available
     new_tokens = auth.create_token_pair(user.id, request, db)
+    
+    # Update session with new refresh token JTI if session exists
+    if current_session and jti:
+        # Get new JTI from the new refresh token
+        import jwt
+        try:
+            new_refresh_payload = jwt.decode(new_tokens["refresh_token"], options={"verify_signature": False})
+            new_jti = new_refresh_payload.get("jti")
+            if new_jti:
+                session_manager.update_session_jti(db, current_session.session_id, new_jti)
+        except Exception as e:
+            logger.warning(f"Could not update session JTI: {e}")
     logger.info(f"Tokens refreshed for user: {user.username}")
     
     return new_tokens

@@ -193,7 +193,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     try:
         user_data = db.execute(text("""
             SELECT id, username, email, hashed_password, full_name, preferences,
-                   created_at, email_verified, two_factor_enabled, two_factor_secret, backup_codes
+                   created_at, email_verified, email_verification_token, two_factor_enabled, two_factor_secret, backup_codes
             FROM users 
             WHERE id = :user_id
             LIMIT 1
@@ -202,7 +202,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         if "does not exist" in str(e):
             # Fall back to basic query without 2FA columns
             user_data = db.execute(text("""
-                SELECT id, username, email, hashed_password, full_name, preferences, created_at
+                SELECT id, username, email, hashed_password, full_name, preferences, created_at, email_verification_token
                 FROM users 
                 WHERE id = :user_id
                 LIMIT 1
@@ -219,6 +219,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
                     'preferences': user_data.preferences,
                     'created_at': user_data.created_at,
                     'email_verified': False,
+                    'email_verification_token': getattr(user_data, 'email_verification_token', None),
                     'two_factor_enabled': False,
                     'two_factor_secret': None,
                     'backup_codes': None
@@ -241,6 +242,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
             self.preferences = json.loads(row.preferences) if row.preferences else {}
             self.created_at = row.created_at
             self.email_verified = row.email_verified or False
+            self.email_verification_token = getattr(row, 'email_verification_token', None)
             self.two_factor_enabled = row.two_factor_enabled or False
             self.two_factor_secret = row.two_factor_secret
             self.backup_codes = json.loads(row.backup_codes) if row.backup_codes else []

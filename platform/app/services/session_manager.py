@@ -155,6 +155,27 @@ class SessionManager:
             db.rollback()
             return False
     
+    def update_session_jti(self, db: DBSession, session_id: str, new_jti: str) -> bool:
+        """Aggiorna il JTI del refresh token per una sessione esistente"""
+        try:
+            session = db.query(SessionModel).filter(
+                SessionModel.session_id == session_id
+            ).first()
+            
+            if session and self.is_session_active(session):
+                session.refresh_token_jti = new_jti
+                session.last_activity = datetime.utcnow()
+                db.commit()
+                logger.info(f"Session JTI updated: {session_id}")
+                return True
+            
+            return False
+            
+        except Exception as e:
+            logger.error(f"Error updating session JTI: {e}")
+            db.rollback()
+            return False
+    
     def terminate_session(
         self,
         db: DBSession,
