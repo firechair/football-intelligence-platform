@@ -3,6 +3,11 @@ const nextConfig = {
   // Enable static exports for Railway
   output: 'standalone',
   
+  // Disable static generation for specific pages
+  experimental: {
+    skipTrailingSlashRedirect: true,
+  },
+  
   // Environment variables for production
   env: {
     // Do not fallback to localhost in production without explicit env
