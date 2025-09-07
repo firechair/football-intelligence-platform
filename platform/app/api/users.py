@@ -397,6 +397,90 @@ def read_current_user(current_user: models.User = Depends(auth.get_current_user)
 def get_profile(current_user: models.User = Depends(auth.get_current_user)):
     return current_user
 
+@router.get("/list")
+def list_users(db: Session = Depends(get_db)):
+    """Endpoint per controllare gli utenti registrati nel database Railway"""
+    import psycopg2
+    import os
+    
+    # URL del database Railway
+    railway_db_url = "postgresql://postgres:REDACTED@example.invalid:5432/railway"
+    
+    try:
+        # Prima provo con il database locale (SQLite)
+        try:
+            result = db.execute(text("""
+                SELECT id, username, email, created_at, email_verified
+                FROM users 
+                ORDER BY created_at DESC 
+            """))
+            local_users = result.fetchall()
+            
+            local_users_list = []
+            for user in local_users:
+                local_users_list.append({
+                    "id": user.id,
+                    "username": user.username,
+                    "email": user.email,
+                    "created_at": str(user.created_at),
+                    "email_verified": user.email_verified,
+                    "full_name": None,
+                    "is_active": True
+                })
+        except Exception as local_e:
+            local_users_list = []
+            logger.warning(f"Could not query local database: {local_e}")
+        
+        # Provo anche a connettermi al database Railway se possibile
+        railway_users_list = []
+        railway_error = None
+        
+        try:
+            # Provo prima con l'host interno
+            conn = psycopg2.connect(railway_db_url)
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT id, username, email, created_at, email_verified, full_name, is_active
+                FROM users 
+                ORDER BY created_at DESC
+            """)
+            railway_users = cursor.fetchall()
+            
+            for user in railway_users:
+                railway_users_list.append({
+                    "id": user[0],
+                    "username": user[1],
+                    "email": user[2],
+                    "created_at": str(user[3]),
+                    "email_verified": user[4],
+                    "full_name": user[5],
+                    "is_active": user[6]
+                })
+            
+            cursor.close()
+            conn.close()
+            
+        except Exception as railway_e:
+            railway_error = str(railway_e)
+            logger.warning(f"Could not connect to Railway database: {railway_e}")
+        
+        return {
+            "local_database": {
+                "total_users": len(local_users_list),
+                "users": local_users_list
+            },
+            "railway_database": {
+                "total_users": len(railway_users_list),
+                "users": railway_users_list,
+                "error": railway_error
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Error listing users: {e}")
+        return {"error": str(e), "users": []}
+
 @router.patch("/profile", response_model=UserOut)
 def update_profile(
     db: Session = Depends(get_db),
