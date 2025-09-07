@@ -101,52 +101,57 @@ class FootballAPIMapper:
             calls = self._handle_odds(question)
             api_calls.extend(calls)
         
-        # 1. PARTITE FUTURE/PROGRAMMATE
+        # 1. TOP MATCH/PARTITE IMPORTANTI - priorità alta
+        elif self._is_top_matches_query(question):
+            calls = self._handle_top_matches(question)
+            api_calls.extend(calls)
+        
+        # 2. PARTITE FUTURE/PROGRAMMATE
         elif self._is_upcoming_matches_query(question):
             calls = self._handle_upcoming_matches(question)
             api_calls.extend(calls)
         
-        # 2. PARTITE LIVE
+        # 3. PARTITE LIVE
         elif self._is_live_matches_query(question):
             calls = self._handle_live_matches(question)
             api_calls.extend(calls)
         
-        # 3. RISULTATI/PARTITE PASSATE
+        # 4. RISULTATI/PARTITE PASSATE
         elif self._is_past_matches_query(question):
             calls = self._handle_past_matches(question)
             api_calls.extend(calls)
         
-        # 4. INFORMAZIONI DETTAGLIATE TRA DUE SQUADRE (priorità alta)
+        # 5. INFORMAZIONI DETTAGLIATE TRA DUE SQUADRE (priorità alta)
         elif self._is_team_comparison_query(question):
             calls = self._handle_team_comparison(question)
             api_calls.extend(calls)
         
-        # 5. STATISTICHE SQUADRE
+        # 6. STATISTICHE SQUADRE
         elif self._is_team_stats_query(question):
             calls = self._handle_team_stats(question)
             api_calls.extend(calls)
         
-        # 6. CLASSIFICHE
+        # 7. CLASSIFICHE
         elif self._is_standings_query(question):
             calls = self._handle_standings(question)
             api_calls.extend(calls)
         
-        # 7. GIOCATORI/ROSA
+        # 8. GIOCATORI/ROSA
         elif self._is_players_query(question):
             calls = self._handle_players(question)
             api_calls.extend(calls)
         
-        # 8. INFORTUNI
+        # 9. INFORTUNI
         elif self._is_injuries_query(question):
             calls = self._handle_injuries(question)
             api_calls.extend(calls)
         
-        # 9. TRASFERIMENTI
+        # 10. TRASFERIMENTI
         elif self._is_transfers_query(question):
             calls = self._handle_transfers(question)
             api_calls.extend(calls)
             
-        # 10. FALLBACK - prova a cercare squadre/campionati generici
+        # 11. FALLBACK - prova a cercare squadre/campionati generici
         else:
             calls = self._handle_general_query(question)
             api_calls.extend(calls)
@@ -168,6 +173,15 @@ class FootballAPIMapper:
             'prossima settimana', 'weekend', 'fixtures'
         ]
         return any(keyword in question for keyword in keywords)
+    
+    def _is_top_matches_query(self, question: str) -> bool:
+        """Rileva domande sui top match/partite importanti"""
+        keywords = [
+            'top match', 'partite importanti', 'match importanti', 
+            'important matches', 'partite della settimana', 'match della settimana',
+            'partite principali', 'match principali', 'big match', 'big matches'
+        ]
+        return any(keyword in question.lower() for keyword in keywords)
     
     def _is_live_matches_query(self, question: str) -> bool:
         """Rileva domande sulle partite live"""
@@ -861,6 +875,190 @@ class FootballAPIMapper:
                     description=f"Partite del {start_date}",
                     priority=2
                 ))
+        
+        return calls
+    
+    def _handle_top_matches(self, question: str) -> List[APICall]:
+        """Gestisce richieste di top match/partite importanti"""
+        calls = []
+        
+        # Determina il range di date per la ricerca
+        today = datetime.now()
+        
+        # Se menziona "settimana", usa la settimana corrente
+        if 'settimana' in question.lower() or 'week' in question.lower():
+            # Inizio settimana (lunedì)
+            start_of_week = today - timedelta(days=today.weekday())
+            end_of_week = start_of_week + timedelta(days=6)
+            start_date = start_of_week.strftime('%Y-%m-%d')
+            end_date = end_of_week.strftime('%Y-%m-%d')
+            description_suffix = "della settimana"
+        else:
+            # Default: prossimi 7 giorni
+            start_date = today.strftime('%Y-%m-%d')
+            end_date = (today + timedelta(days=7)).strftime('%Y-%m-%d')
+            description_suffix = "prossimi 7 giorni"
+        
+        # Top 5 campionati europei per garantire partite importanti
+        top_leagues = [
+            (135, "Serie A"),
+            (39, "Premier League"), 
+            (140, "La Liga"),
+            (78, "Bundesliga"),
+            (61, "Ligue 1")
+        ]
+        
+        # Aggiungi chiamate per i top campionati
+        for league_id, league_name in top_leagues:
+            calls.append(APICall(
+                endpoint="fixtures",
+                params={
+                    "league": league_id,
+                    "season": self.current_season,
+                    "from": start_date,
+                    "to": end_date,
+                    "status": "NS-LIVE"  # Solo partite non iniziate o live
+                },
+                description=f"Top match {league_name} {description_suffix}",
+                priority=1
+            ))
+        
+        # Aggiungi Champions League se disponibile
+        calls.append(APICall(
+            endpoint="fixtures",
+            params={
+                "league": 2,  # Champions League
+                "season": self.current_season,
+                "from": start_date,
+                "to": end_date,
+                "status": "NS-LIVE"
+            },
+            description=f"Champions League {description_suffix}",
+            priority=1
+        ))
+        
+        # Aggiungi Europa League
+        calls.append(APICall(
+            endpoint="fixtures",
+            params={
+                "league": 3,  # Europa League
+                "season": self.current_season,
+                "from": start_date,
+                "to": end_date,
+                "status": "NS-LIVE"
+            },
+            description=f"Europa League {description_suffix}",
+            priority=2
+        ))
+        
+        return calls
+    
+    def handle_generic_match_request(self, question: str, user_preferences: Dict[str, Any] = None) -> List[APICall]:
+        """Gestisce richieste generiche di partite con supporto per preferenze utente"""
+        calls = []
+        
+        # Se ci sono preferenze utente, usale
+        if user_preferences:
+            countries = user_preferences.get('countries', [])
+            leagues = user_preferences.get('leagues', [])
+            
+            today = datetime.now()
+            start_date = today.strftime('%Y-%m-%d')
+            end_date = (today + timedelta(days=7)).strftime('%Y-%m-%d')
+            
+            # Gestisci preferenze per campionati specifici
+            if leagues:
+                for league_name in leagues:
+                    league_info = self._extract_league(league_name)
+                    if league_info:
+                        calls.append(APICall(
+                            endpoint="fixtures",
+                            params={
+                                "league": league_info['league'],
+                                "season": self.current_season,
+                                "from": start_date,
+                                "to": end_date,
+                                "status": "NS-LIVE"
+                            },
+                            description=f"Partite {league_name} prossimi 7 giorni",
+                            priority=1
+                        ))
+            
+            # Gestisci preferenze per paesi
+            elif countries:
+                for country in countries:
+                    country_normalized = self.country_codes.get(country.lower(), country)
+                    
+                    if country_normalized == "Italy":
+                        # Serie A priorità alta
+                        calls.append(APICall(
+                            endpoint="fixtures",
+                            params={
+                                "league": 135,  # Serie A
+                                "season": self.current_season,
+                                "from": start_date,
+                                "to": end_date,
+                                "status": "NS-LIVE"
+                            },
+                            description="Partite Serie A prossimi 7 giorni",
+                            priority=1
+                        ))
+                    elif country_normalized == "Spain":
+                        calls.append(APICall(
+                            endpoint="fixtures",
+                            params={
+                                "league": 140,  # La Liga
+                                "season": self.current_season,
+                                "from": start_date,
+                                "to": end_date,
+                                "status": "NS-LIVE"
+                            },
+                            description="Partite La Liga prossimi 7 giorni",
+                            priority=1
+                        ))
+                    elif country_normalized == "England":
+                        calls.append(APICall(
+                            endpoint="fixtures",
+                            params={
+                                "league": 39,  # Premier League
+                                "season": self.current_season,
+                                "from": start_date,
+                                "to": end_date,
+                                "status": "NS-LIVE"
+                            },
+                            description="Partite Premier League prossimi 7 giorni",
+                            priority=1
+                        ))
+                    elif country_normalized == "Germany":
+                        calls.append(APICall(
+                            endpoint="fixtures",
+                            params={
+                                "league": 78,  # Bundesliga
+                                "season": self.current_season,
+                                "from": start_date,
+                                "to": end_date,
+                                "status": "NS-LIVE"
+                            },
+                            description="Partite Bundesliga prossimi 7 giorni",
+                            priority=1
+                        ))
+                    elif country_normalized == "France":
+                        calls.append(APICall(
+                            endpoint="fixtures",
+                            params={
+                                "league": 61,  # Ligue 1
+                                "season": self.current_season,
+                                "from": start_date,
+                                "to": end_date,
+                                "status": "NS-LIVE"
+                            },
+                            description="Partite Ligue 1 prossimi 7 giorni",
+                            priority=1
+                        ))
+        
+        # Se non ci sono preferenze o chiamate, usa il metodo generale esistente
+        if not calls:
+            calls = self._handle_general_query(question)
         
         return calls
     

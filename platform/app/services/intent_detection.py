@@ -17,6 +17,7 @@ class IntentType(Enum):
     OPEN_EVENT = "open_event"
     OPEN_EVENT_SECTION = "open_event_section"  # Nuovo intent per aprire sezioni specifiche
     TEAM_COMPARISON = "team_comparison"  # Nuovo intent per informazioni dettagliate tra squadre
+    GENERIC_MATCH_REQUEST = "generic_match_request"  # Nuovo intent per richieste generiche sui match
     HELP = "help"
     GREETING = "greeting"
     UNKNOWN = "unknown"
@@ -273,6 +274,26 @@ class IntentDetector:
                         r"manuale|tutorial"
                     ],
                     "entities": [],
+                    "confidence": ConfidenceLevel.HIGH
+                }
+            ],
+            
+            IntentType.GENERIC_MATCH_REQUEST: [
+                {
+                    "patterns": [
+                        r"(?:partite|match|incontri)\s+(?:di\s+)?(domani|oggi|stasera)",
+                        r"(?:che\s+)?(?:partite|match|incontri)\s+(?:ci\s+sono\s+)?(?:domani|oggi|stasera)",
+                        r"(?:informazioni|info)\s+(?:su|sulle)\s+(?:partite|match|incontri)\s+(?:di\s+)?(domani|oggi|stasera)",
+                        r"(?:partite|match|incontri)\s+(?:in\s+programma|previste?)\s+(?:per\s+)?(domani|oggi|stasera)",
+                        r"(?:quali|che)\s+(?:partite|match|incontri)\s+(?:ci\s+sono\s+)?(?:domani|oggi|stasera)",
+                        r"(?:partite|match|incontri)\s+(?:del|di)\s+(weekend|fine\s+settimana)",
+                        r"(?:partite|match|incontri)\s+(?:della\s+)?settimana",
+                        r"(?:partite|match|incontri)\s+(?:di\s+)?(?:serie\s+a|premier\s+league|champions\s+league|europa\s+league)",
+                        r"(?:partite|match|incontri)\s+(?:del|di)\s+(\w+)\s*(?:campionato|league)?",
+                        r"(?:campionati|tornei)\s+(?:di\s+)?(domani|oggi|stasera)",
+                        r"(?:che\s+)?(?:campionati|tornei)\s+(?:ci\s+sono\s+)?(?:domani|oggi|stasera)"
+                    ],
+                    "entities": ["time_reference", "competition", "date"],
                     "confidence": ConfidenceLevel.HIGH
                 }
             ],
