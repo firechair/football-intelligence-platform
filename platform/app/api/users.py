@@ -441,7 +441,7 @@ def list_users(db: Session = Depends(get_db)):
             cursor = conn.cursor()
             
             cursor.execute("""
-                SELECT id, username, email, created_at, email_verified, full_name, is_active
+                SELECT id, username, email, created_at, email_verified, full_name
                 FROM users 
                 ORDER BY created_at DESC
             """)
@@ -455,7 +455,7 @@ def list_users(db: Session = Depends(get_db)):
                     "created_at": str(user[3]),
                     "email_verified": user[4],
                     "full_name": user[5],
-                    "is_active": user[6]
+                    "is_active": True  # Default value since column doesn't exist
                 })
             
             cursor.close()
