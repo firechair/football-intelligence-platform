@@ -986,7 +986,7 @@ def cleanup_users_except_firechair(
     confirm_cleanup: str = Body(..., embed=True),
     db: Session = Depends(get_db)
 ):
-    """Elimina tutti gli utenti tranne 'firechair' da database locale e Railway - OPERAZIONE DI EMERGENZA"""
+    """Elimina tutti gli utenti tranne 'firechair' da database locale e Railway - OPERAZIONE DI EMERGENZA v2"""
     import psycopg2
     
     # Verifica stringa di conferma per sicurezza
