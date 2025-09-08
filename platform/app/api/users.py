@@ -983,19 +983,29 @@ def get_email_verification_status(current_user: models.User = Depends(auth.get_c
 
 @router.delete("/cleanup-except-firechair")
 def cleanup_users_except_firechair(
-    current_user: models.User = Depends(auth.get_current_user),
+    confirm_cleanup: str = Body(..., embed=True),
     db: Session = Depends(get_db)
 ):
-    """Elimina tutti gli utenti tranne 'firechair' - SOLO PER ADMIN"""
+    """Elimina tutti gli utenti tranne 'firechair' da database locale e Railway - OPERAZIONE DI EMERGENZA"""
+    import psycopg2
     
-    # Verifica che l'utente corrente sia 'firechair'
-    if current_user.username != 'firechair':
+    # Verifica stringa di conferma per sicurezza
+    if confirm_cleanup != "CONFIRM_DELETE_ALL_USERS_EXCEPT_FIRECHAIR":
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only 'firechair' user can perform this operation"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid confirmation string. Use: CONFIRM_DELETE_ALL_USERS_EXCEPT_FIRECHAIR"
         )
     
+    # URL del database Railway
+    railway_db_url = "postgresql://postgres:REDACTED@example.invalid:5432/railway"
+    
+    local_result = {}
+    railway_result = {}
+    
     try:
+        # PULIZIA DATABASE LOCALE
+        logger.info("Starting local database cleanup...")
+        
         # Conta gli utenti prima dell'eliminazione
         total_users = db.query(models.User).count()
         
@@ -1004,26 +1014,74 @@ def cleanup_users_except_firechair(
             models.User.username != 'firechair'
         ).delete(synchronize_session=False)
         
-        # Elimina anche le sessioni associate agli utenti eliminati
-        # (le sessioni di firechair rimangono)
-        firechair_id = current_user.id
-        deleted_sessions = db.query(models.Session).filter(
-            models.Session.user_id != firechair_id
-        ).delete(synchronize_session=False)
+        # Elimina anche le sessioni associate agli utenti eliminati (tranne quelle di firechair)
+        # Prima otteniamo l'ID di firechair
+        firechair_user = db.query(models.User).filter(models.User.username == 'firechair').first()
+        firechair_id = firechair_user.id if firechair_user else None
+        
+        if firechair_id:
+            deleted_sessions = db.query(models.Session).filter(
+                models.Session.user_id != firechair_id
+            ).delete(synchronize_session=False)
+        else:
+            # Se firechair non esiste, elimina tutte le sessioni
+            deleted_sessions = db.query(models.Session).delete(synchronize_session=False)
         
         db.commit()
         
-        logger.info(f"User cleanup completed by {current_user.username}: {deleted_count} users and {deleted_sessions} sessions deleted")
+        local_result = {
+            "success": True,
+            "total_users_before": total_users,
+            "users_deleted": deleted_count,
+            "sessions_deleted": deleted_sessions,
+            "remaining_users": 1
+        }
+        
+        logger.info(f"Local cleanup completed: {deleted_count} users and {deleted_sessions} sessions deleted")
+        
+        # PULIZIA DATABASE RAILWAY
+        logger.info("Starting Railway database cleanup...")
+        
+        try:
+            conn = psycopg2.connect(railway_db_url)
+            cursor = conn.cursor()
+            
+            # Conta utenti prima dell'eliminazione
+            cursor.execute("SELECT COUNT(*) FROM users")
+            railway_total_users = cursor.fetchone()[0]
+            
+            # Elimina tutti gli utenti tranne 'firechair'
+            cursor.execute("""
+                DELETE FROM users 
+                WHERE username != 'firechair'
+            """)
+            railway_deleted_count = cursor.rowcount
+            
+            conn.commit()
+            cursor.close()
+            conn.close()
+            
+            railway_result = {
+                "success": True,
+                "total_users_before": railway_total_users,
+                "users_deleted": railway_deleted_count,
+                "remaining_users": railway_total_users - railway_deleted_count
+            }
+            
+            logger.info(f"Railway cleanup completed: {railway_deleted_count} users deleted")
+            
+        except Exception as railway_e:
+            railway_result = {
+                "success": False,
+                "error": str(railway_e)
+            }
+            logger.error(f"Railway cleanup failed: {railway_e}")
         
         return {
             "success": True,
-            "message": f"Successfully deleted {deleted_count} users (kept 'firechair')",
-            "details": {
-                "total_users_before": total_users,
-                "users_deleted": deleted_count,
-                "sessions_deleted": deleted_sessions,
-                "remaining_users": 1
-            }
+            "message": f"Cleanup completed - Local: {local_result['users_deleted']} users deleted, Railway: {railway_result.get('users_deleted', 0)} users deleted",
+            "local_database": local_result,
+            "railway_database": railway_result
         }
         
     except Exception as e:
