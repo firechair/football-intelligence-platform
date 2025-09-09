@@ -7,7 +7,7 @@ from app.services.fixtures_collector import fixtures_collector
 from app.services.odds_collector import odds_collector
 from app.services.cleanup_service import cleanup_service
 from app.services.predictions_collector import predictions_collector  # 🆕 NUOVO
-from app.core.database import get_db
+from app.core.database import get_db, SessionLocal
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -18,22 +18,22 @@ class OddsTrackingScheduler:
         self.tasks = []
     
     async def start(self):
-        """Avvia tutti i task schedulati"""
+        """Avvia tutti i task schedulati con ritardi scaglionati"""
         if self.running:
             logger.warning("Scheduler already running")
             return
         
         self.running = True
-        logger.info("Starting odds tracking scheduler")
+        logger.info("Starting odds tracking scheduler with staggered delays")
         
-        # Task principali
+        # Task principali con ritardi iniziali per evitare sovrapposizioni
         self.tasks = [
             asyncio.create_task(self._fixtures_collection_loop()),
-            asyncio.create_task(self._odds_collection_loop()),
-            asyncio.create_task(self._predictions_collection_loop()),  # 🆕 NUOVO
-            asyncio.create_task(self._cleanup_loop()),
-            asyncio.create_task(self._match_cleanup_loop()),
-            asyncio.create_task(self._health_check_loop()),
+            asyncio.create_task(self._delayed_odds_collection_loop(60)),  # 1 min delay
+            asyncio.create_task(self._delayed_predictions_collection_loop(180)),  # 3 min delay
+            asyncio.create_task(self._delayed_cleanup_loop(300)),  # 5 min delay
+            asyncio.create_task(self._delayed_match_cleanup_loop(420)),  # 7 min delay
+            asyncio.create_task(self._delayed_health_check_loop(540)),  # 9 min delay
         ]
         
         # Attendere tutti i task
@@ -67,7 +67,7 @@ class OddsTrackingScheduler:
                 )
                 
                 # Aggiorna database
-                db = next(get_db())
+                db = SessionLocal()
                 try:
                     await fixtures_collector.update_tracking_status(fixtures, db)
                     logger.info(f"Fixtures collection completed: {len(fixtures)} fixtures")
@@ -86,7 +86,7 @@ class OddsTrackingScheduler:
             try:
                 logger.info("Starting odds collection cycle")
                 
-                db = next(get_db())
+                db = SessionLocal()
                 try:
                     # Ottieni partite da tracciare
                     fixture_ids = await fixtures_collector.get_active_fixtures_for_tracking(db)
@@ -113,7 +113,7 @@ class OddsTrackingScheduler:
             try:
                 logger.info("Starting cleanup cycle")
                 
-                db = next(get_db())
+                db = SessionLocal()
                 try:
                     await self._cleanup_old_data(db)
                     logger.info("Cleanup completed")
@@ -132,7 +132,7 @@ class OddsTrackingScheduler:
             try:
                 logger.info("Starting match cleanup cycle")
                 
-                db = next(get_db())
+                db = SessionLocal()
                 try:
                     # Esegui cleanup dei match finiti
                     stats = await cleanup_service.cleanup_finished_matches(db)
@@ -198,7 +198,7 @@ class OddsTrackingScheduler:
     async def _check_database_connectivity(self) -> bool:
         """Controlla connettività database"""
         try:
-            db = next(get_db())
+            db = SessionLocal()
             try:
                 from app.models.odds_tracking import ExtendedOddsHistory
                 db.query(ExtendedOddsHistory).first()
@@ -211,7 +211,7 @@ class OddsTrackingScheduler:
     async def _check_recent_data_collection(self) -> bool:
         """Controlla se ci sono state raccolte di dati recenti"""
         try:
-            db = next(get_db())
+            db = SessionLocal()
             try:
                 from app.models.odds_tracking import ExtendedOddsHistory
                 recent_cutoff = datetime.now() - timedelta(hours=2)
@@ -231,7 +231,7 @@ class OddsTrackingScheduler:
             try:
                 logger.info("Starting predictions collection cycle")
                 
-                db = next(get_db())
+                db = SessionLocal()
                 try:
                     stats = await predictions_collector.collect_predictions_for_all_fixtures(db)
                     logger.info(f"Predictions collection completed: {stats}")
@@ -243,6 +243,37 @@ class OddsTrackingScheduler:
             
             # Attendi prossimo ciclo (6 ore)
             await asyncio.sleep(settings.PREDICTIONS_COLLECTION_INTERVAL)
+    
+    # Metodi delayed per evitare sovrapposizioni
+    async def _delayed_odds_collection_loop(self, delay_seconds: int):
+        """Odds collection con ritardo iniziale"""
+        logger.info(f"Odds collection will start in {delay_seconds} seconds")
+        await asyncio.sleep(delay_seconds)
+        await self._odds_collection_loop()
+    
+    async def _delayed_predictions_collection_loop(self, delay_seconds: int):
+        """Predictions collection con ritardo iniziale"""
+        logger.info(f"Predictions collection will start in {delay_seconds} seconds")
+        await asyncio.sleep(delay_seconds)
+        await self._predictions_collection_loop()
+    
+    async def _delayed_cleanup_loop(self, delay_seconds: int):
+        """Cleanup con ritardo iniziale"""
+        logger.info(f"Cleanup will start in {delay_seconds} seconds")
+        await asyncio.sleep(delay_seconds)
+        await self._cleanup_loop()
+    
+    async def _delayed_match_cleanup_loop(self, delay_seconds: int):
+        """Match cleanup con ritardo iniziale"""
+        logger.info(f"Match cleanup will start in {delay_seconds} seconds")
+        await asyncio.sleep(delay_seconds)
+        await self._match_cleanup_loop()
+    
+    async def _delayed_health_check_loop(self, delay_seconds: int):
+        """Health check con ritardo iniziale"""
+        logger.info(f"Health check will start in {delay_seconds} seconds")
+        await asyncio.sleep(delay_seconds)
+        await self._health_check_loop()
 
 # Singleton instance
 scheduler = OddsTrackingScheduler()

@@ -1,3 +1,7 @@
+# Forza il caricamento delle variabili d'ambiente PRIMA di qualsiasi altro import
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import logging
@@ -42,17 +46,47 @@ app.include_router(assets.router)       # 🆕 Assets/Logo Proxy API
 async def startup_event():
     logger.info("Starting FIP Odds Tracker")
     
+    # Forza ricaricamento .env e ricrea engine
+    load_dotenv(override=True)
+    
     # Inizializza database
     try:
-        from app.core.database import engine
-        from app.models import Base
-        Base.metadata.create_all(bind=engine)
+        # Ottieni DATABASE_URL direttamente dal .env
+        import os
+        database_url = os.getenv("DATABASE_URL")
+        
+        if not database_url:
+            raise ValueError("DATABASE_URL not found in environment variables")
+        
+        logger.info(f"Direct DATABASE_URL from env: {database_url.replace(database_url.split('@')[0].split(':')[-1], '***') if '@' in database_url else database_url}")
+        
+        # Crea engine direttamente con URL dal .env
+        from sqlalchemy import create_engine
+        engine = create_engine(
+            database_url,
+            pool_size=0,
+            max_overflow=0,
+            poolclass=None,
+            pool_pre_ping=True,
+            echo=False
+        )
+        
+        from app.models.odds_tracking import Base as OddsBase
+        from app.models.predictions import Base as PredictionsBase
+        
+        # Log dell'URL per debug
+        logger.info(f"Using database URL: {str(engine.url).replace(engine.url.password or '', '***')}")
+        
+        # Crea tutte le tabelle da entrambi i Base
+        OddsBase.metadata.create_all(bind=engine)
+        PredictionsBase.metadata.create_all(bind=engine)
         logger.info("Database tables created successfully")
     except Exception as e:
         logger.error(f"Error creating database tables: {e}")
     
-    # Avvia scheduler in background
-    asyncio.create_task(scheduler.start())
+    # Avvia scheduler in background senza bloccarlo
+    if not scheduler.running:
+        asyncio.create_task(scheduler.start())
 
 @app.on_event("shutdown")
 async def shutdown_event():

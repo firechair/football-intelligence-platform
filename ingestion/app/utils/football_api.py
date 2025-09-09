@@ -17,26 +17,24 @@ class FootballAPIClient:
             "X-Rapidapi-Host": settings.FOOTBALL_API_HOST,
             "Host": settings.FOOTBALL_API_HOST
         }
-        self.rate_limiter = asyncio.Semaphore(settings.MAX_CONCURRENT_REQUESTS)
-        self.last_batch_time = 0
+        # Rate limiter più conservativo per evitare sovraccarico
+        self.rate_limiter = asyncio.Semaphore(1)  # Solo 1 richiesta alla volta
+        self.last_request_time = 0
         
-        # 🆕 Rate limiter separato per predizioni
-        self.predictions_rate_limiter = asyncio.Semaphore(1)  # 1 concurrent for predictions
+        # Rate limiter separato per predizioni
+        self.predictions_rate_limiter = asyncio.Semaphore(1)
         self.last_predictions_request = 0
     
     async def _make_request(self, endpoint: str, params: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Effettua richiesta API con rate limiting corretto (3 concurrent/second)"""
+        """Effettua richiesta API con rate limiting conservativo (1 req/2 secondi)"""
         async with self.rate_limiter:
-            # Rate limiting: spacing tra richieste nello stesso batch
-            await asyncio.sleep(settings.REQUEST_SPACING)
-            
-            # Assicura che non superiamo 3 richieste/secondo anche a livello batch
+            # Rate limiting conservativo: 2 secondi tra richieste
             current_time = time.time()
-            time_since_batch = current_time - self.last_batch_time
-            if time_since_batch < 1.0:
-                await asyncio.sleep(1.0 - time_since_batch)
+            time_since_last = current_time - self.last_request_time
+            if time_since_last < 2.0:
+                await asyncio.sleep(2.0 - time_since_last)
             
-            self.last_batch_time = time.time()
+            self.last_request_time = time.time()
             
             url = f"{self.base_url}/{endpoint}"
             
@@ -95,36 +93,31 @@ class FootballAPIClient:
             return None
     
     async def get_odds_for_multiple_fixtures(self, fixture_ids: List[int]) -> Dict[int, Optional[Dict[str, Any]]]:
-        """Recupera quote per multiple partite in parallelo"""
-        semaphore = asyncio.Semaphore(3)  # Limita concorrenza a 3
+        """Recupera quote per multiple partite sequenzialmente per evitare sovraccarico"""
+        logger.info(f"Processing {len(fixture_ids)} fixtures for odds collection")
         
-        async def fetch_single_odds(fixture_id: int):
-            async with semaphore:
-                return fixture_id, await self.get_odds_for_fixture(fixture_id)
-        
-        tasks = [fetch_single_odds(fid) for fid in fixture_ids]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        
+        # Processa sequenzialmente per evitare sovraccarico API
         odds_map = {}
-        for result in results:
-            if isinstance(result, Exception):
-                logger.error(f"Exception in batch odds fetch: {str(result)}")
-                continue
-            
-            fixture_id, odds_data = result
-            odds_map[fixture_id] = odds_data
+        for i, fixture_id in enumerate(fixture_ids):
+            try:
+                logger.info(f"Processing fixture {fixture_id} ({i+1}/{len(fixture_ids)})")
+                odds_data = await self.get_odds_for_fixture(fixture_id)
+                odds_map[fixture_id] = odds_data
+            except Exception as e:
+                logger.error(f"Exception fetching odds for fixture {fixture_id}: {str(e)}")
+                odds_map[fixture_id] = None
         
         return odds_map
     
     # 🆕 NUOVO METODO
     async def get_predictions_for_fixture(self, fixture_id: int) -> Optional[Dict[str, Any]]:
-        """Recupera predizioni per una specifica partita con rate limiting 1 req/sec"""
+        """Recupera predizioni per una specifica partita con rate limiting conservativo (3 sec)"""
         async with self.predictions_rate_limiter:
-            # Assicura 1 secondo tra richieste predizioni
+            # Assicura 3 secondi tra richieste predizioni
             current_time = time.time()
             time_since_last = current_time - self.last_predictions_request
-            if time_since_last < 1.0:
-                await asyncio.sleep(1.0 - time_since_last)
+            if time_since_last < 3.0:
+                await asyncio.sleep(3.0 - time_since_last)
             
             self.last_predictions_request = time.time()
             

@@ -29,8 +29,19 @@ class PredictionsCollector:
         
         logger.info(f"Found {len(fixture_ids)} fixtures for predictions collection")
         
-        # Collect predictions (1 req/sec)
-        predictions_map = await football_api.get_predictions_for_multiple_fixtures(fixture_ids)
+        # Processa in batch di 5 partite per volta per non bloccare il server
+        batch_size = 5
+        predictions_map = {}
+        
+        for i in range(0, len(fixture_ids), batch_size):
+            batch = fixture_ids[i:i + batch_size]
+            logger.info(f"Processing predictions batch {i//batch_size + 1}/{(len(fixture_ids) + batch_size - 1)//batch_size}")
+            
+            batch_predictions = await football_api.get_predictions_for_multiple_fixtures(batch)
+            predictions_map.update(batch_predictions)
+            
+            # Pausa più lunga tra batch per predictions (10 secondi)
+            await asyncio.sleep(10)
         
         collection_stats = {
             "fixtures_processed": 0,
@@ -44,18 +55,21 @@ class PredictionsCollector:
         for fixture_id, prediction_data in predictions_map.items():
             try:
                 if prediction_data:
+                    logger.info(f"Processing prediction for fixture {fixture_id}")
                     result = await self._process_fixture_prediction(fixture_id, prediction_data, db)
                     
                     if result["success"]:
+                        logger.info(f"Successfully processed prediction for fixture {fixture_id} (update: {result['is_update']})")
                         if result["is_update"]:
                             collection_stats["predictions_updated"] += 1
                         else:
                             collection_stats["predictions_collected"] += 1
                     else:
-                        collection_stats["no_predictions"] += 1
+                        logger.warning(f"Failed to process prediction for fixture {fixture_id}: {result.get('reason', 'Unknown error')}")
+                        collection_stats["errors"].append(f"Fixture {fixture_id}: {result.get('reason', 'Unknown error')}")
                 else:
+                    logger.info(f"No prediction data available for fixture {fixture_id}")
                     collection_stats["no_predictions"] += 1
-                    logger.warning(f"No prediction data for fixture {fixture_id}")
                 
                 collection_stats["fixtures_processed"] += 1
                 

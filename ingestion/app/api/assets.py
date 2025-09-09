@@ -176,6 +176,8 @@ async def fetch_image_with_retry(url: str, max_retries: int = 2) -> tuple[bytes,
 @router.get("/logo")
 async def get_logo_proxy(
     url: str = Query(..., description="URL del logo da recuperare"),
+    name: Optional[str] = Query(None, description="Nome della squadra/lega"),
+    type: Optional[str] = Query(None, description="Tipo di logo (team/league)"),
     fallback: Optional[str] = Query(None, description="URL di fallback se il principale fallisce")
 ):
     """Proxy per loghi con cache, gestione errori e fallback"""

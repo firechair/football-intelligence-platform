@@ -58,11 +58,22 @@ class OddsCollector:
         }
     
     async def collect_odds_for_fixtures(self, fixture_ids: List[int], db: Session) -> Dict[str, Any]:
-        """Raccoglie quote per una lista di partite"""
+        """Raccoglie quote per una lista di partite in batch piccoli"""
         logger.info(f"Starting odds collection for {len(fixture_ids)} fixtures")
         
-        # Batch request per le quote
-        odds_map = await football_api.get_odds_for_multiple_fixtures(fixture_ids)
+        # Processa in batch di 10 partite per volta per non bloccare il server
+        batch_size = 10
+        odds_map = {}
+        
+        for i in range(0, len(fixture_ids), batch_size):
+            batch = fixture_ids[i:i + batch_size]
+            logger.info(f"Processing batch {i//batch_size + 1}/{(len(fixture_ids) + batch_size - 1)//batch_size}")
+            
+            batch_odds = await football_api.get_odds_for_multiple_fixtures(batch)
+            odds_map.update(batch_odds)
+            
+            # Pausa tra batch per permettere al server di rispondere ad altre richieste
+            await asyncio.sleep(5)
         
         collection_stats = {
             "fixtures_processed": 0,

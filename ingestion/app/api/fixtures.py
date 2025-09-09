@@ -76,28 +76,40 @@ def get_team_logo_url(team_name: str) -> Optional[str]:
     if not team_name:
         return None
     
+    from urllib.parse import quote_plus
+    
     # Cerca logo diretto
     direct_url = TEAM_LOGOS.get(team_name)
     if direct_url:
-        return f"/assets/logo?url={direct_url}"
+        qp_url = quote_plus(direct_url)
+        qp_name = quote_plus(team_name)
+        return f"/assets/logo?url={qp_url}&name={qp_name}&type=team"
     
     # Fallback generico
     fallback_url = f"https://logos.football/teams/{team_name.lower().replace(' ', '-')}.png"
-    return f"/assets/logo?url={fallback_url}"
+    qp_url = quote_plus(fallback_url)
+    qp_name = quote_plus(team_name)
+    return f"/assets/logo?url={qp_url}&name={qp_name}&type=team"
 
 def get_league_logo_url(league_name: str) -> Optional[str]:
     """Genera URL proxy per logo lega"""
     if not league_name:
         return None
     
+    from urllib.parse import quote_plus
+    
     # Cerca logo diretto
     direct_url = LEAGUE_LOGOS.get(league_name)
     if direct_url:
-        return f"/assets/logo?url={direct_url}"
+        qp_url = quote_plus(direct_url)
+        qp_name = quote_plus(league_name)
+        return f"/assets/logo?url={qp_url}&name={qp_name}&type=league"
     
     # Fallback generico
     fallback_url = f"https://logos.football/leagues/{league_name.lower().replace(' ', '-')}.png"
-    return f"/assets/logo?url={fallback_url}"
+    qp_url = quote_plus(fallback_url)
+    qp_name = quote_plus(league_name)
+    return f"/assets/logo?url={qp_url}&name={qp_name}&type=league"
 
 # 🆕 MERCATI SUPPORTATI
 SUPPORTED_MARKETS = [
@@ -200,33 +212,46 @@ async def get_upcoming_fixtures(
 
 async def _get_fixtures_by_date(target_date: date, league_id: Optional[int], db: Session) -> FixturesByDateResponse:
     """Helper per ottenere partite per una data specifica"""
-    
-    start_datetime = datetime.combine(target_date, datetime.min.time())
-    end_datetime = datetime.combine(target_date, datetime.max.time())
-    
-    query = db.query(FixtureTrackingStatus).filter(
-        and_(
-            FixtureTrackingStatus.fixture_date >= start_datetime,
-            FixtureTrackingStatus.fixture_date <= end_datetime,
-            FixtureTrackingStatus.tracking_status.in_(["pending", "active"])
+    try:
+        start_datetime = datetime.combine(target_date, datetime.min.time())
+        end_datetime = datetime.combine(target_date, datetime.max.time())
+        
+        query = db.query(FixtureTrackingStatus).filter(
+            and_(
+                FixtureTrackingStatus.fixture_date >= start_datetime,
+                FixtureTrackingStatus.fixture_date <= end_datetime,
+                FixtureTrackingStatus.tracking_status.in_(["pending", "active"])
+            )
         )
-    )
-    
-    if league_id:
-        query = query.filter(FixtureTrackingStatus.league_id == league_id)
-    
-    fixtures = query.order_by(FixtureTrackingStatus.fixture_date).all()
-    
-    matches = []
-    for fixture in fixtures:
-        fixture_data = await _build_fixture_response(fixture, db)
-        matches.append(fixture_data)
-    
-    return FixturesByDateResponse(
-        date=target_date.isoformat(),
-        total_matches=len(matches),
-        matches=matches
-    )
+        
+        if league_id:
+            query = query.filter(FixtureTrackingStatus.league_id == league_id)
+        
+        fixtures = query.order_by(FixtureTrackingStatus.fixture_date).all()
+        
+        matches = []
+        for fixture in fixtures:
+            try:
+                fixture_data = await _build_fixture_response(fixture, db)
+                matches.append(fixture_data)
+            except Exception as e:
+                # Log error but continue with other fixtures
+                print(f"Error building fixture response for {fixture.fixture_id}: {str(e)}")
+                continue
+        
+        return FixturesByDateResponse(
+            date=target_date.isoformat(),
+            total_matches=len(matches),
+            matches=matches
+        )
+    except Exception as e:
+        # Return empty response if there's any error
+        print(f"Error in _get_fixtures_by_date: {str(e)}")
+        return FixturesByDateResponse(
+            date=target_date.isoformat(),
+            total_matches=0,
+            matches=[]
+        )
 
 async def _build_fixture_response(fixture: FixtureTrackingStatus, db: Session) -> FixtureResponse:
     """Helper per costruire risposta fixture completa con quote migliori"""
