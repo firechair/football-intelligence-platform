@@ -1,8 +1,8 @@
 from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, func, Index
-from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime
 
-Base = declarative_base()
+# Importiamo il Base condiviso
+from . import Base
 
 class MatchPredictions(Base):
     """Predizioni per le partite - Semplificato (solo dati predictions)"""

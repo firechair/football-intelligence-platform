@@ -20,17 +20,10 @@ import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from app.models import Base, PredictionsBase
-from sqlalchemy import MetaData
+from app.models import Base
 
-# Combiniamo i metadata dei due Base
-combined_metadata = MetaData()
-for table in Base.metadata.tables.values():
-    table.tometadata(combined_metadata)
-for table in PredictionsBase.metadata.tables.values():
-    table.tometadata(combined_metadata)
-
-target_metadata = combined_metadata
+# Usiamo il Base condiviso
+target_metadata = Base.metadata
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:

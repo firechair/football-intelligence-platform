@@ -9,32 +9,40 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Rate limiter globale per tutte le chiamate API
+_global_rate_limiter = asyncio.Semaphore(2)  # Massimo 2 chiamate simultanee
+_last_request_time = 0
+_request_spacing = 1.0  # 1 secondo tra richieste (1 req/sec)
+
 class FootballAPIClient:
     def __init__(self):
         self.base_url = settings.FOOTBALL_API_BASE_URL
+        # FIXED: Use correct API-Football headers format
         self.headers = {
-            "X-Rapidapi-Key": settings.FOOTBALL_API_KEY,
-            "X-Rapidapi-Host": settings.FOOTBALL_API_HOST,
-            "Host": settings.FOOTBALL_API_HOST
+            "x-apisports-key": settings.FOOTBALL_API_KEY
         }
-        # Rate limiter più conservativo per evitare sovraccarico
-        self.rate_limiter = asyncio.Semaphore(1)  # Solo 1 richiesta alla volta
+        # Rate limiter: utilizza configurazione da settings
+        self.rate_limiter = asyncio.Semaphore(settings.MAX_CONCURRENT_REQUESTS)
+        self.request_spacing = settings.REQUEST_SPACING
         self.last_request_time = 0
         
         # Rate limiter separato per predizioni
-        self.predictions_rate_limiter = asyncio.Semaphore(1)
+        self.predictions_rate_limiter = asyncio.Semaphore(settings.PREDICTIONS_MAX_CONCURRENT)
+        self.predictions_request_spacing = settings.PREDICTIONS_REQUEST_SPACING
         self.last_predictions_request = 0
     
     async def _make_request(self, endpoint: str, params: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Effettua richiesta API con rate limiting conservativo (1 req/2 secondi)"""
-        async with self.rate_limiter:
-            # Rate limiting conservativo: 2 secondi tra richieste
+        """Effettua richiesta API con rate limiting globale"""
+        global _global_rate_limiter, _last_request_time, _request_spacing
+        
+        async with _global_rate_limiter:
+            # Rate limiting globale: utilizza spacing globale
             current_time = time.time()
-            time_since_last = current_time - self.last_request_time
-            if time_since_last < 2.0:
-                await asyncio.sleep(2.0 - time_since_last)
+            time_since_last = current_time - _last_request_time
+            if time_since_last < _request_spacing:
+                await asyncio.sleep(_request_spacing - time_since_last)
             
-            self.last_request_time = time.time()
+            _last_request_time = time.time()
             
             url = f"{self.base_url}/{endpoint}"
             
@@ -87,7 +95,10 @@ class FootballAPIClient:
         try:
             data = await self._make_request("odds", {"fixture": fixture_id})
             odds_data = data.get("response", [])
-            return odds_data[0] if odds_data else None
+            if not odds_data:
+                logger.warning(f"No odds available from API for fixture {fixture_id}")
+                return None
+            return odds_data[0]
         except Exception as e:
             logger.error(f"Failed to get odds for fixture {fixture_id}: {str(e)}")
             return None
@@ -110,38 +121,73 @@ class FootballAPIClient:
         return odds_map
     
     # 🆕 NUOVO METODO
-    async def get_predictions_for_fixture(self, fixture_id: int) -> Optional[Dict[str, Any]]:
-        """Recupera predizioni per una specifica partita con rate limiting conservativo (3 sec)"""
-        async with self.predictions_rate_limiter:
-            # Assicura 3 secondi tra richieste predizioni
+    async def _make_predictions_request(self, endpoint: str, params: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Effettua richiesta API per predizioni con rate limiting globale"""
+        global _global_rate_limiter, _last_request_time, _request_spacing
+        
+        async with _global_rate_limiter:
+            # Rate limiting globale: utilizza spacing globale
             current_time = time.time()
-            time_since_last = current_time - self.last_predictions_request
-            if time_since_last < 3.0:
-                await asyncio.sleep(3.0 - time_since_last)
+            time_since_last = current_time - _last_request_time
+            if time_since_last < _request_spacing:
+                await asyncio.sleep(_request_spacing - time_since_last)
             
-            self.last_predictions_request = time.time()
+            _last_request_time = time.time()
+            
+            url = f"{self.base_url}/{endpoint}"
             
             try:
-                data = await self._make_request("predictions", {"fixture": fixture_id})
-                predictions_data = data.get("response", [])
-                return predictions_data[0] if predictions_data else None
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    response = await client.get(url, headers=self.headers, params=params or {})
+                    response.raise_for_status()
+                    
+                    data = response.json()
+                    logger.info(f"API Request: {endpoint} - Status: {response.status_code}")
+                    
+                    return data
+                    
+            except httpx.HTTPStatusError as e:
+                logger.error(f"HTTP error for {endpoint}: {e.response.status_code} - {e.response.text}")
+                raise
             except Exception as e:
-                logger.error(f"Failed to get predictions for fixture {fixture_id}: {str(e)}")
-                return None
+                logger.error(f"Request error for {endpoint}: {str(e)}")
+                raise
+
+    async def get_predictions_for_fixture(self, fixture_id: int) -> Optional[Dict[str, Any]]:
+        """Recupera predizioni per una specifica partita con rate limiting conservativo"""
+        try:
+            data = await self._make_predictions_request("predictions", {"fixture": fixture_id})
+            predictions_data = data.get("response", [])
+            return predictions_data[0] if predictions_data else None
+        except Exception as e:
+            logger.error(f"Failed to get predictions for fixture {fixture_id}: {str(e)}")
+            return None
     
     # 🆕 NUOVO METODO
     async def get_predictions_for_multiple_fixtures(self, fixture_ids: List[int]) -> Dict[int, Optional[Dict[str, Any]]]:
-        """Recupera predizioni per multiple partite (1 req/sec)"""
+        """Recupera predizioni per multiple partite (2 req/sec) con timeout"""
         results = {}
         
         for fixture_id in fixture_ids:
-            logger.info(f"Getting predictions for fixture {fixture_id}...")
-            prediction_data = await self.get_predictions_for_fixture(fixture_id)
-            results[fixture_id] = prediction_data
-            
-            # Progress logging every 50 requests
-            if len(results) % 50 == 0:
-                logger.info(f"Processed {len(results)}/{len(fixture_ids)} predictions")
+            try:
+                logger.info(f"Getting predictions for fixture {fixture_id}...")
+                # Timeout di 30 secondi per ogni richiesta
+                prediction_data = await asyncio.wait_for(
+                    self.get_predictions_for_fixture(fixture_id), 
+                    timeout=30.0
+                )
+                results[fixture_id] = prediction_data
+                
+                # Progress logging every 10 requests
+                if len(results) % 10 == 0:
+                    logger.info(f"Processed {len(results)}/{len(fixture_ids)} predictions")
+                    
+            except asyncio.TimeoutError:
+                logger.error(f"Timeout getting predictions for fixture {fixture_id}")
+                results[fixture_id] = None
+            except Exception as e:
+                logger.error(f"Error getting predictions for fixture {fixture_id}: {str(e)}")
+                results[fixture_id] = None
         
         return results
 

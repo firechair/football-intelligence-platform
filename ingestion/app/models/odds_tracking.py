@@ -1,9 +1,9 @@
-# Importiamo il Base dal modulo locale (sarà integrato con il backend principale su Railway)
-from sqlalchemy.ext.declarative import declarative_base
-Base = declarative_base()
 from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, func, JSON, Boolean, DECIMAL, Index
 from sqlalchemy.orm import relationship
 from datetime import datetime
+
+# Importiamo il Base condiviso
+from . import Base
 
 class ExtendedOddsHistory(Base):
     """Estensione del modello OddsHistory per supportare tutti i mercati"""
@@ -60,12 +60,17 @@ class FixtureTrackingStatus(Base):
     id = Column(Integer, primary_key=True)
     fixture_id = Column(Integer, nullable=False, unique=True, index=True)
     
-    # Metadata partita
+    # Identificazione partita
     league_id = Column(Integer, nullable=True, index=True)
     league_name = Column(String(200), nullable=True)
     home_team = Column(String(100), nullable=False)
     away_team = Column(String(100), nullable=False)
     fixture_date = Column(DateTime, nullable=False, index=True)
+    
+    # Loghi da API-Football
+    home_team_logo = Column(String(500), nullable=True)  # URL logo squadra casa
+    away_team_logo = Column(String(500), nullable=True)  # URL logo squadra ospite
+    league_logo = Column(String(500), nullable=True)     # URL logo lega
     
     # Stato tracking
     tracking_status = Column(String(20), default="pending", index=True)  # pending, active, completed, failed

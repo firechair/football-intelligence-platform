@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import Response
 import httpx
 import asyncio
@@ -20,6 +20,66 @@ logo_semaphore = asyncio.Semaphore(4)
 # Logger
 logger = logging.getLogger(__name__)
 
+# Mappatura per normalizzare nomi squadre con varianti
+TEAM_NAME_MAPPINGS = {
+    "Juventus U21": "Juventus",
+    "Juventus Under 21": "Juventus",
+    "Juventus Primavera": "Juventus",
+    "AC Milan U21": "AC Milan",
+    "Inter Milan U21": "Inter Milan",
+    "Real Madrid U21": "Real Madrid",
+    "Barcelona U21": "Barcelona",
+    "Bayern Munich U21": "Bayern Munich",
+}
+
+def normalize_team_name(team_name: str) -> str:
+    """Normalizza il nome della squadra per gestire varianti come U21, W, Femminile, etc."""
+    if not team_name:
+        return team_name
+    
+    # Controlla mappatura diretta
+    normalized = TEAM_NAME_MAPPINGS.get(team_name)
+    if normalized:
+        return normalized
+    
+    # Rimuovi suffissi comuni per squadre giovanili/femminili/varianti
+    import re
+    patterns = [
+        # Squadre giovanili
+        r'\s+U21$', r'\s+U20$', r'\s+U19$', r'\s+U18$', r'\s+U17$', r'\s+U16$',
+        r'\s+Under\s+21$', r'\s+Under\s+20$', r'\s+Under\s+19$',
+        r'\s+Primavera$', r'\s+Youth$', r'\s+Reserve$', r'\s+Reserves$',
+        r'\s+Junior$', r'\s+Juniors$', r'\s+Academy$', r'\s+Giovanili$',
+        # Squadre di riserva
+        r'\s+B$', r'\s+II$', r'\s+2$', r'\s+III$', r'\s+3$',
+        r'\s+FC\s+B$', r'\s+FC\s+II$', r'\s+FC\s+2$',
+        # Squadre femminili
+        r'\s+W$', r'\s+Women$', r'\s+Femminile$', r'\s+F$',
+        r'\s+Ladies$', r'\s+Girls$', r'\s+Donne$',
+        # Squadre maschili (raramente usato ma per completezza)
+        r'\s+M$', r'\s+Men$', r'\s+Maschile$', r'\s+Uomini$'
+    ]
+    
+    original_name = team_name
+    # Applica tutti i pattern fino a quando non ci sono più cambiamenti
+    changed = True
+    iterations = 0
+    while changed and iterations < 3:  # Limite per evitare loop infiniti
+        changed = False
+        for pattern in patterns:
+            new_name = re.sub(pattern, '', team_name, flags=re.IGNORECASE)
+            if new_name != team_name:
+                team_name = new_name.strip()
+                changed = True
+                break
+        iterations += 1
+    
+    result = team_name.strip()
+    if result != original_name:
+        logger.info(f"Team name normalized: '{original_name}' -> '{result}'")
+    
+    return result
+
 # Headers per evitare rate limiting
 DEFAULT_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
@@ -31,9 +91,9 @@ DEFAULT_HEADERS = {
     'Upgrade-Insecure-Requests': '1',
 }
 
-# URL problematici da evitare
+# URL problematici da evitare (rimosso media.api-sports.io per permettere loghi API-Football)
 PROBLEMATIC_DOMAINS = {
-    'media.api-sports.io',
+    # 'media.api-sports.io',  # Commentato per permettere loghi API-Football
     'logos.api-sports.io',
     'media-1.api-sports.io',
     'media-2.api-sports.io'
@@ -72,6 +132,10 @@ def is_valid_image_url(url: str) -> bool:
     
     # Se non ha estensione ma sembra un URL di immagine, è valido
     if any(keyword in url_lower for keyword in ['logo', 'image', 'img', 'avatar']):
+        return True
+    
+    # Accetta placeholder da via.placeholder.com
+    if 'via.placeholder.com' in url_lower:
         return True
     
     return False
@@ -174,32 +238,42 @@ async def fetch_image_with_retry(url: str, max_retries: int = 2) -> tuple[bytes,
     raise HTTPException(status_code=500, detail="Max retries exceeded")
 
 @router.get("/logo")
+@router.head("/logo")
 async def get_logo_proxy(
+    request: Request,
     url: str = Query(..., description="URL del logo da recuperare"),
     name: Optional[str] = Query(None, description="Nome della squadra/lega"),
     type: Optional[str] = Query(None, description="Tipo di logo (team/league)"),
     fallback: Optional[str] = Query(None, description="URL di fallback se il principale fallisce")
 ):
-    """Proxy per loghi con cache, gestione errori e fallback"""
+    """Proxy per loghi con cache, gestione errori e fallback - Versione semplificata per compatibilità frontend"""
     
-    # Validazione URL
+    # Check for known problematic URLs and return 204 immediately (like backend)
+    if not url or url in ['null', '', 'undefined']:
+        return Response(status_code=204)
+    
+    # Validazione URL semplificata
     if not is_valid_image_url(url):
-        if fallback and is_valid_image_url(fallback):
-            url = fallback
-        else:
-            raise HTTPException(status_code=400, detail="Invalid image URL")
+        return Response(status_code=204)
     
     cache_key = get_cache_key(url)
-    
-    # Controlla failure cache
-    if is_failure_cached(url):
-        if fallback and is_valid_image_url(fallback):
-            return await get_logo_proxy(fallback)
-        raise HTTPException(status_code=404, detail="Image temporarily unavailable")
     
     # Controlla cache successi
     if cache_key in logo_cache and is_cache_valid(logo_cache[cache_key]):
         cached_entry = logo_cache[cache_key]
+        
+        # Per richieste HEAD, restituisci solo headers
+        if request.method == "HEAD":
+            return Response(
+                content=None,
+                media_type=cached_entry['content_type'],
+                headers={
+                    'Cache-Control': 'public, max-age=21600',  # 6 ore
+                    'X-Cache': 'HIT',
+                    'Content-Length': str(len(cached_entry['content']))
+                }
+            )
+        
         return Response(
             content=cached_entry['content'],
             media_type=cached_entry['content_type'],
@@ -221,9 +295,17 @@ async def get_logo_proxy(
             'success': True
         }
         
-        # Rimuovi da failure cache se presente
-        if cache_key in failure_cache:
-            del failure_cache[cache_key]
+        # Per richieste HEAD, restituisci solo headers
+        if request.method == "HEAD":
+            return Response(
+                content=None,
+                media_type=content_type,
+                headers={
+                    'Cache-Control': 'public, max-age=21600',  # 6 ore
+                    'X-Cache': 'MISS',
+                    'Content-Length': str(len(content))
+                }
+            )
         
         return Response(
             content=content,
@@ -234,31 +316,10 @@ async def get_logo_proxy(
             }
         )
     
-    except HTTPException as e:
-        # Cache failure
-        failure_cache[cache_key] = datetime.now()
-        
-        # Prova fallback se disponibile
-        if fallback and is_valid_image_url(fallback) and fallback != url:
-            try:
-                return await get_logo_proxy(fallback)
-            except:
-                pass
-        
-        # Se tutto fallisce, ritorna errore originale
-        raise e
-    
     except Exception as e:
-        logger.error(f"Unexpected error fetching {url}: {e}")
-        failure_cache[cache_key] = datetime.now()
-        
-        if fallback and is_valid_image_url(fallback) and fallback != url:
-            try:
-                return await get_logo_proxy(fallback)
-            except:
-                pass
-        
-        raise HTTPException(status_code=500, detail="Internal server error")
+        # Per tutti gli errori, ritorna 204 come fa il backend
+        logger.warning(f"Logo fetch failed for {url}: {e}")
+        return Response(status_code=204)
 
 @router.get("/logo/status")
 async def get_logo_cache_status():

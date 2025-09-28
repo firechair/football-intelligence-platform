@@ -259,12 +259,11 @@ async def get_supported_markets():
 async def _get_best_odds_for_market(fixture_id: int, market: str, db: Session) -> Dict[str, float]:
     """Helper per ottenere le migliori quote per un mercato"""
     
-    # Quote più recenti per questo mercato (ultime 24h)
+    # TEMPORANEO: Rimuovi filtro temporale per debug - trova TUTTE le quote disponibili
     latest_odds = db.query(ExtendedOddsHistory).filter(
         and_(
             ExtendedOddsHistory.fixture_id == fixture_id,
-            ExtendedOddsHistory.market_name == market,
-            ExtendedOddsHistory.collected_at >= datetime.now() - timedelta(hours=24)
+            ExtendedOddsHistory.market_name == market
         )
     ).order_by(desc(ExtendedOddsHistory.collected_at)).all()
     
@@ -297,3 +296,46 @@ async def _get_market_comparison(fixture_id: int, market: str, db: Session) -> O
         best_bookmaker=best_bookmaker,
         all_odds=odds_data
     )
+
+@router.get("/history/{fixture_id}")
+async def get_fixture_odds_history(
+    fixture_id: int,
+    market_name: Optional[str] = Query(None, description="Filter by market name"),
+    bookmaker: Optional[str] = Query(None, description="Filter by bookmaker name"),
+    hours_back: int = Query(24, description="Hours of history to retrieve"),
+    db: Session = Depends(get_db)
+):
+    """Recupera la cronologia delle quote per una partita specifica"""
+    
+    cutoff_time = datetime.now() - timedelta(hours=hours_back)
+    
+    query = db.query(ExtendedOddsHistory).filter(
+        ExtendedOddsHistory.fixture_id == fixture_id,
+        ExtendedOddsHistory.collected_at >= cutoff_time
+    )
+    
+    if market_name:
+        query = query.filter(ExtendedOddsHistory.market_name == market_name)
+    
+    if bookmaker:
+        query = query.filter(ExtendedOddsHistory.bookmaker_name.ilike(f"%{bookmaker}%"))
+    
+    odds_history = query.order_by(desc(ExtendedOddsHistory.collected_at)).all()
+    
+    return {
+        "success": True,
+        "fixture_id": fixture_id,
+        "total_entries": len(odds_history),
+        "filtered_entries": len(odds_history),
+        "history": [
+            {
+                "fixture_id": odd.fixture_id,
+                "market_name": odd.market_name,
+                "bookmaker": odd.bookmaker_name,
+                "odd_value": float(odd.odd_value),
+                "timestamp": int(odd.collected_at.timestamp() * 1000),  # Numeric timestamp in milliseconds
+                "minutes_to_kickoff": odd.minutes_to_kickoff
+            }
+            for odd in odds_history
+        ]
+    }

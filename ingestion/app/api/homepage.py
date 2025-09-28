@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc, and_
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 from pydantic import BaseModel
 
@@ -18,12 +18,16 @@ class HomepageMatch(BaseModel):
     fixture_date: datetime
     league_name: str
     
+    # Loghi delle squadre
+    home_team_logo: Optional[str] = None
+    away_team_logo: Optional[str] = None
+    
     # Quote principali (1X2)
     best_odds: Dict[str, float] = {}  # {"1": 2.10, "X": 3.20, "2": 3.50}
     
     # Predizioni
-    predicted_winner: str = None
-    win_probability: str = None
+    predicted_winner: Optional[str] = None
+    win_probability: Optional[str] = None
 
 class HomepageStats(BaseModel):
     total_active_matches: int
@@ -49,13 +53,13 @@ async def get_homepage_data(
     
     # === STATS GENERALI ===
     now = datetime.now()
-    today_plus_7 = now + timedelta(days=7)
+    today_plus_18h = now + timedelta(hours=18)
     
     # Query ottimizzate
     total_active = db.query(FixtureTrackingStatus).filter(
         and_(
             FixtureTrackingStatus.fixture_date > now,
-            FixtureTrackingStatus.fixture_date <= today_plus_7,
+            FixtureTrackingStatus.fixture_date <= today_plus_18h,
             FixtureTrackingStatus.tracking_status.in_(["pending", "active"])
         )
     ).count()
@@ -101,11 +105,11 @@ async def get_homepage_data(
         match_data = await _build_match_data(fixture, db)
         featured_matches.append(match_data)
     
-    # === UPCOMING MATCHES (next 7 days) ===
+    # === UPCOMING MATCHES (next 18 hours) ===
     upcoming_fixtures = db.query(FixtureTrackingStatus).filter(
         and_(
             FixtureTrackingStatus.fixture_date > now,
-            FixtureTrackingStatus.fixture_date <= today_plus_7,
+            FixtureTrackingStatus.fixture_date <= today_plus_18h,
             FixtureTrackingStatus.tracking_status.in_(["pending", "active"])
         )
     ).order_by(FixtureTrackingStatus.fixture_date).limit(upcoming_limit).all()
@@ -155,6 +159,8 @@ async def _build_match_data(fixture: FixtureTrackingStatus, db: Session) -> Home
         away_team=fixture.away_team,
         fixture_date=fixture.fixture_date,
         league_name=fixture.league_name,
+        home_team_logo=fixture.home_team_logo,
+        away_team_logo=fixture.away_team_logo,
         best_odds=best_odds,
         predicted_winner=predicted_winner,
         win_probability=win_probability

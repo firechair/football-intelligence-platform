@@ -11,21 +11,22 @@ def init_database():
     """Inizializza l'engine del database con l'URL corrente"""
     global engine, SessionLocal
     
-    # Configurazione specifica per tipo di database
-    if settings.DATABASE_URL.startswith("sqlite"):
+    # Usa il DATABASE_URL configurato (PostgreSQL in produzione, SQLite solo se esplicitamente configurato)
+    database_url = settings.DATABASE_URL
+    
+    if database_url.startswith("sqlite"):
         # Configurazione SQLite
         engine = create_engine(
-            settings.DATABASE_URL,
+            database_url,
             connect_args={"check_same_thread": False},
             echo=False
         )
     else:
         # Configurazione PostgreSQL
         engine = create_engine(
-            settings.DATABASE_URL,
-            pool_size=0,
-            max_overflow=0,
-            poolclass=None,
+            database_url,
+            pool_size=10,
+            max_overflow=20,
             pool_pre_ping=True,
             echo=False
         )

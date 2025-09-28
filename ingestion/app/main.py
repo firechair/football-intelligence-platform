@@ -1,6 +1,10 @@
 # Forza il caricamento delle variabili d'ambiente PRIMA di qualsiasi altro import
+import os
 from dotenv import load_dotenv
-load_dotenv()
+
+# Carica il file .env appropriato basato sulla variabile ENVIRONMENT
+env_file = ".env.test" if os.getenv("ENVIRONMENT") == "test" else ".env"
+load_dotenv(env_file, override=True)
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,37 +26,38 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS
+# CORS - Use production-safe configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_origins=settings.ALLOWED_ORIGINS,  # Use configured origins instead of "*"
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
-# Routers
-app.include_router(historical.router)
-app.include_router(charts.router)
-app.include_router(admin.router)
-app.include_router(predictions.router)  # 🆕 NUOVO
-app.include_router(homepage.router)     # 🆕 Homepage API
-app.include_router(fixtures.router)     # 🆕 Fixtures API
-app.include_router(odds.router)         # 🆕 Odds API
-app.include_router(assets.router)       # 🆕 Assets/Logo Proxy API
+# Routers with /api/v1 prefix
+app.include_router(historical.router, prefix="/api/v1")
+app.include_router(charts.router, prefix="/api/v1")
+app.include_router(admin.router, prefix="/api/v1")
+app.include_router(predictions.router, prefix="/api/v1")  # 🆕 NUOVO
+app.include_router(homepage.router, prefix="/api/v1")     # 🆕 Homepage API
+app.include_router(fixtures.router, prefix="/api/v1")     # 🆕 Fixtures API
+app.include_router(odds.router, prefix="/api/v1")         # 🆕 Odds API
+app.include_router(assets.router, prefix="/api/v1")       # 🆕 Assets/Logo Proxy API
 
 # Startup e shutdown events
 @app.on_event("startup")
 async def startup_event():
+    import os
     logger.info("Starting FIP Odds Tracker")
     
     # Forza ricaricamento .env e ricrea engine
-    load_dotenv(override=True)
+    env_file = ".env.test" if os.getenv("ENVIRONMENT") == "test" else ".env"
+    load_dotenv(env_file, override=True)
     
     # Inizializza database
     try:
         # Ottieni DATABASE_URL direttamente dal .env
-        import os
         database_url = os.getenv("DATABASE_URL")
         
         if not database_url:
@@ -96,12 +101,4 @@ async def shutdown_event():
 @app.get("/")
 async def root():
     return {"message": "FIP Odds Tracker API", "status": "running"}
-
-@app.get("/health")
-async def health_check():
-    return {
-        "status": "healthy",
-        "timestamp": datetime.now().isoformat(),
-        "scheduler_running": scheduler.running
-    }
 

@@ -28,7 +28,7 @@ class BookmakerComparisonResponse(BaseModel):
     timestamp: datetime
     bookmaker_odds: Dict[str, float]  # bookmaker_name -> odd_value
 
-@router.get("/odds/{fixture_id}", response_model=List[OddsHistoryResponse])
+@router.get("/odds/{fixture_id}")
 async def get_fixture_odds_history(
     fixture_id: int,
     market: Optional[str] = Query(None, description="Filter by market (1, X, 2, Over2.5, etc.)"),
@@ -38,6 +38,8 @@ async def get_fixture_odds_history(
 ):
     """Recupera la cronologia delle quote per una partita specifica"""
     
+    print(f"[OPERATOR HISTORICAL] Request: fixture_id={fixture_id}, market={market}, bookmaker={bookmaker}, hours_back={hours_back}")
+    
     cutoff_time = datetime.now() - timedelta(hours=hours_back)
     
     query = db.query(ExtendedOddsHistory).filter(
@@ -46,24 +48,37 @@ async def get_fixture_odds_history(
     )
     
     if market:
+        print(f"[OPERATOR HISTORICAL] Filtering by market: {market}")
         query = query.filter(ExtendedOddsHistory.market_name == market)
     
     if bookmaker:
+        print(f"[OPERATOR HISTORICAL] Filtering by bookmaker: {bookmaker}")
         query = query.filter(ExtendedOddsHistory.bookmaker_name.ilike(f"%{bookmaker}%"))
     
     odds_history = query.order_by(desc(ExtendedOddsHistory.collected_at)).all()
     
-    return [
-        OddsHistoryResponse(
-            fixture_id=odd.fixture_id,
-            market_name=odd.market_name,
-            bookmaker_name=odd.bookmaker_name,
-            odd_value=float(odd.odd_value),
-            collected_at=odd.collected_at,
-            minutes_to_kickoff=odd.minutes_to_kickoff
-        )
-        for odd in odds_history
-    ]
+    print(f"[OPERATOR HISTORICAL] Found {len(odds_history)} records")
+    if odds_history:
+        print(f"[OPERATOR HISTORICAL] Sample record: market={odds_history[0].market_name}, bookmaker={odds_history[0].bookmaker_name}, value={odds_history[0].odd_value}")
+    
+    # Return data in the format expected by the frontend
+    return {
+        "success": True,
+        "fixture_id": fixture_id,
+        "total_entries": len(odds_history),
+        "filtered_entries": len(odds_history),
+        "history": [
+            {
+                "fixture_id": odd.fixture_id,
+                "market_name": odd.market_name,
+                "bookmaker": odd.bookmaker_name,
+                "odd_value": float(odd.odd_value),
+                "timestamp": int(odd.collected_at.timestamp() * 1000),  # Numeric timestamp in milliseconds
+                "minutes_to_kickoff": odd.minutes_to_kickoff
+            }
+            for odd in odds_history
+        ]
+    }
 
 @router.get("/trends/{fixture_id}/{market}", response_model=List[MarketTrendResponse])
 async def get_market_trends(

@@ -55,6 +55,10 @@ class FixturesCollector:
                 existing.fixture_date = datetime.fromisoformat(
                     fixture_data.get("date", "").replace("Z", "+00:00")
                 )
+                # Aggiorna loghi se disponibili
+                existing.home_team_logo = teams_data.get("home", {}).get("logo")
+                existing.away_team_logo = teams_data.get("away", {}).get("logo")
+                existing.league_logo = league_data.get("logo")
                 existing.updated_at = datetime.now()
             else:
                 # Crea nuovo record
@@ -67,6 +71,10 @@ class FixturesCollector:
                     fixture_date=datetime.fromisoformat(
                         fixture_data.get("date", "").replace("Z", "+00:00")
                     ),
+                    # Salva loghi da API-Football
+                    home_team_logo=teams_data.get("home", {}).get("logo"),
+                    away_team_logo=teams_data.get("away", {}).get("logo"),
+                    league_logo=league_data.get("logo"),
                     tracking_status="pending"
                 )
                 db.add(new_tracking)
@@ -75,17 +83,44 @@ class FixturesCollector:
         logger.info(f"Updated tracking status for {len(fixtures)} fixtures")
     
     async def get_active_fixtures_for_tracking(self, db: Session) -> List[int]:
-        """Restituisce fixture ID che devono essere trackati"""
+        """Restituisce fixture ID che devono essere trackati, con priorità per partite giornaliere"""
         cutoff_date = datetime.now() - timedelta(hours=2)  # Non tracciare partite iniziate da più di 2 ore
         future_date = datetime.now() + timedelta(days=10)
         
-        active_fixtures = db.query(FixtureTrackingStatus).filter(
+        # Priorità 1: Partite di oggi e domani (prossime 24 ore)
+        tomorrow_end = datetime.now() + timedelta(hours=24)
+        daily_fixtures = db.query(FixtureTrackingStatus).filter(
             FixtureTrackingStatus.fixture_date > cutoff_date,
+            FixtureTrackingStatus.fixture_date <= tomorrow_end,
+            FixtureTrackingStatus.tracking_status.in_(["pending", "active"])
+        ).order_by(FixtureTrackingStatus.fixture_date).all()
+        
+        # Priorità 2: Altre partite future (dopo 24 ore)
+        other_fixtures = db.query(FixtureTrackingStatus).filter(
+            FixtureTrackingStatus.fixture_date > tomorrow_end,
             FixtureTrackingStatus.fixture_date < future_date,
             FixtureTrackingStatus.tracking_status.in_(["pending", "active"])
-        ).all()
+        ).order_by(FixtureTrackingStatus.fixture_date).all()
         
-        return [f.fixture_id for f in active_fixtures]
+        # Combina: prima le partite giornaliere, poi le altre
+        prioritized_fixtures = daily_fixtures + other_fixtures
+        
+        logger.info(f"Found {len(daily_fixtures)} daily fixtures and {len(other_fixtures)} future fixtures")
+        return [f.fixture_id for f in prioritized_fixtures]
+    
+    async def get_daily_fixtures_for_tracking(self, db: Session) -> List[int]:
+        """Restituisce solo le fixture ID delle partite giornaliere (prossime 24 ore)"""
+        cutoff_date = datetime.now() - timedelta(hours=2)  # Non tracciare partite iniziate da più di 2 ore
+        tomorrow_end = datetime.now() + timedelta(hours=24)
+        
+        daily_fixtures = db.query(FixtureTrackingStatus).filter(
+            FixtureTrackingStatus.fixture_date > cutoff_date,
+            FixtureTrackingStatus.fixture_date <= tomorrow_end,
+            FixtureTrackingStatus.tracking_status.in_(["pending", "active"])
+        ).order_by(FixtureTrackingStatus.fixture_date).all()
+        
+        logger.info(f"Found {len(daily_fixtures)} daily fixtures for immediate processing")
+        return [f.fixture_id for f in daily_fixtures]
 
 # Singleton instance
 fixtures_collector = FixturesCollector()
