@@ -269,7 +269,8 @@ async def get_live_fixtures(
     print(f"[OPERATOR] ❌ Cache MISS - Querying DB for live fixtures")
     
     try:
-        now = datetime.now()
+        # Usa UTC per evitare problemi di timezone
+        now = datetime.utcnow()
         
         # Cerca solo partite che dovrebbero essere REALMENTE live:
         # 1. Partite iniziate max 2.5 ore fa (durata partita + extra time)
@@ -277,7 +278,7 @@ async def get_live_fixtures(
         start_time = now - timedelta(hours=2, minutes=30)  # Max 2.5 ore fa
         end_time = now + timedelta(minutes=15)  # Prossimi 15 min
         
-        print(f"[OPERATOR] 🔍 LIVE FILTER: Current time: {now.isoformat()}")
+        print(f"[OPERATOR] 🔍 LIVE FILTER (UTC): Current time: {now.isoformat()}")
         print(f"[OPERATOR] 🔍 LIVE FILTER: Range: {start_time.isoformat()} to {end_time.isoformat()}")
         
         query = db.query(FixtureTrackingStatus).filter(
@@ -363,13 +364,14 @@ async def get_upcoming_fixtures(
 async def _get_fixtures_by_date(target_date: date, league_id: Optional[int], db: Session) -> FixturesByDateResponse:
     """Helper per ottenere partite per una data specifica (solo future)"""
     try:
-        now = datetime.now()
+        # Usa UTC per evitare problemi di timezone
+        now = datetime.utcnow()
         
         # Se la data target è oggi, filtra solo partite future dalla ora corrente
         if target_date == now.date():
             start_datetime = now  # Dalla ora corrente in poi
             end_datetime = datetime.combine(target_date, time(23, 59, 59))
-            print(f"[OPERATOR] 🔍 FILTERING TODAY: Current time: {now.isoformat()}, Filtering from: {start_datetime.isoformat()}")
+            print(f"[OPERATOR] 🔍 FILTERING TODAY (UTC): Current time: {now.isoformat()}, Filtering from: {start_datetime.isoformat()}")
         else:
             # Per altre date, mostra tutte le partite del giorno
             start_datetime = datetime.combine(target_date, time(0, 0, 0))
