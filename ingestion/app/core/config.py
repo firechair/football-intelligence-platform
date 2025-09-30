@@ -51,6 +51,9 @@ class OddsTrackerSettings:
     # Logging
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
     
+    # 🔴 REDIS CACHE (opzionale - fallback a in-memory se non disponibile)
+    REDIS_URL: str = os.getenv("REDIS_URL", "")  # es: redis://red-abc123:6379
+    
     # CORS Origins (production domains)
     ALLOWED_ORIGINS: list = [
         "https://example.invalid",  # Operator production URL

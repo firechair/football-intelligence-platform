@@ -7,7 +7,13 @@ from pydantic import BaseModel
 
 from app.core.database import get_db
 from app.models.odds_tracking import FixtureTrackingStatus, ExtendedOddsHistory, BookmakerInfo
-from app.models.predictions import MatchPredictions
+# MatchPredictions non più usato per performance
+from app.services.cache_service import (
+    cache_service,
+    get_fixtures_cache_key,
+    get_fixtures_range_cache_key,
+    get_live_fixtures_cache_key
+)
 
 router = APIRouter(prefix="/fixtures", tags=["fixtures"])
 
@@ -204,9 +210,20 @@ async def get_fixtures_by_date_range(
     league_id: Optional[int] = Query(None, description="Filter by league ID"),
     db: Session = Depends(get_db)
 ):
-    """🎯 FIXED: Rispetta i parametri start_date e end_date per il range richiesto"""
+    """🎯 FIXED con CACHE: Rispetta i parametri start_date e end_date per il range richiesto"""
     
-    print(f"[OPERATOR] Requested range {start_date} to {end_date}")
+    # 🔴 CACHE: Prova a recuperare dalla cache
+    cache_key = get_fixtures_range_cache_key(
+        start_date.isoformat(), 
+        end_date.isoformat(), 
+        league_id
+    )
+    cached_response = cache_service.get(cache_key)
+    if cached_response:
+        print(f"[OPERATOR] 🎯 Cache HIT for range {start_date} to {end_date}")
+        return FixturesByDateRangeResponse(**cached_response)
+    
+    print(f"[OPERATOR] ❌ Cache MISS - Querying DB for range {start_date} to {end_date}")
     
     # Raccogli partite per ogni giorno nel range (solo future)
     daily_fixtures = []
@@ -222,19 +239,35 @@ async def get_fixtures_by_date_range(
     
     print(f"[OPERATOR] Returning {total_matches} upcoming matches (past matches filtered out)")
     
-    return FixturesByDateRangeResponse(
+    response = FixturesByDateRangeResponse(
         start_date=start_date.isoformat(),
         end_date=end_date.isoformat(),
         total_matches=total_matches,
         daily_fixtures=daily_fixtures
     )
+    
+    # 🔴 CACHE: Salva in cache per 5 minuti (300 secondi)
+    cache_service.set(cache_key, response.model_dump(), ttl_seconds=300)
+    print(f"[OPERATOR] 💾 Cached response for range {start_date} to {end_date}")
+    
+    return response
 
 @router.get("/live", response_model=List[FixtureResponse])
 async def get_live_fixtures(
     limit: int = Query(50, ge=1, le=100, description="Max live fixtures to return"),
     db: Session = Depends(get_db)
 ):
-    """🔴 Partite LIVE con quote aggiornate dal database (ZERO API calls)"""
+    """🔴 Partite LIVE con CACHE (30s) - quote aggiornate dal database (ZERO API calls)"""
+    
+    # 🔴 CACHE: Prova a recuperare dalla cache (TTL 30s per live)
+    cache_key = get_live_fixtures_cache_key()
+    cached_response = cache_service.get(cache_key)
+    if cached_response:
+        print(f"[OPERATOR] 🎯 Cache HIT for live fixtures")
+        return cached_response
+    
+    print(f"[OPERATOR] ❌ Cache MISS - Querying DB for live fixtures")
+    
     try:
         now = datetime.now()
         
@@ -272,6 +305,11 @@ async def get_live_fixtures(
                 continue
         
         print(f"[OPERATOR] Returning {len(live_matches)} actual live/pre-live matches")
+        
+        # 🔴 CACHE: Salva in cache per 30 secondi (live matches cambiano velocemente)
+        cache_service.set(cache_key, live_matches, ttl_seconds=30)
+        print(f"[OPERATOR] 💾 Cached {len(live_matches)} live fixtures (30s)")
+        
         return live_matches
         
     except Exception as e:
@@ -423,22 +461,7 @@ async def _build_fixture_response(fixture: FixtureTrackingStatus, db: Session) -
             print(f"Error getting odds for fixture {fixture.fixture_id}, market {market}: {str(e)}")
             continue
     
-    # 🆕 Predizioni
-    prediction = db.query(MatchPredictions).filter(
-        MatchPredictions.fixture_id == fixture.fixture_id
-    ).first()
-    
-    prediction_data = None
-    if prediction:
-        prediction_data = {
-            "winner_team": prediction.winner_team_name,
-            "advice": prediction.advice,
-            "percent_home": prediction.percent_home,
-            "percent_draw": prediction.percent_draw,
-            "percent_away": prediction.percent_away,
-            "goals_home": prediction.goals_home,
-            "goals_away": prediction.goals_away
-        }
+    # ⚡ OTTIMIZZAZIONE: Predizioni NON caricate per performance (frontend non le usa)
     
     return FixtureResponse(
         fixture_id=fixture.fixture_id,
@@ -451,7 +474,7 @@ async def _build_fixture_response(fixture: FixtureTrackingStatus, db: Session) -
         league_name=fixture.league_name,
         league_logo=league_logo,
         best_odds=best_odds,
-        prediction=prediction_data
+        prediction=None  # Non più caricato per performance
     )
 
 async def _get_best_odds_for_market(fixture_id: int, market: str, db: Session) -> Dict[str, float]:
