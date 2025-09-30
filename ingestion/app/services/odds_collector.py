@@ -358,22 +358,36 @@ class OddsCollector:
                 if not odd_value or float(odd_value) <= 1.0:
                     continue  # Salta quote invalide
                 
-                # Trova l'ID del bookmaker nel database
+                # Trova l'ID del bookmaker nel database (GET-OR-CREATE pattern)
                 bookmaker_info = db.query(BookmakerInfo).filter(
                     BookmakerInfo.name == bookmaker_name
                 ).first()
                 
                 if not bookmaker_info:
-                    # Crea nuovo bookmaker se non esiste
-                    bookmaker_info = BookmakerInfo(
-                        api_id=0,  # Usa 0 per bookmaker generici
-                        name=bookmaker_name,
-                        display_name=bookmaker_name,
-                        is_active=True
-                    )
-                    db.add(bookmaker_info)
-                    db.commit()
-                    db.refresh(bookmaker_info)
+                    # Trova il prossimo api_id disponibile per evitare UNIQUE constraint errors
+                    from sqlalchemy import func as sql_func
+                    max_api_id = db.query(sql_func.max(BookmakerInfo.api_id)).scalar() or 0
+                    # Usa ID > 1000 per bookmaker generici (non da API)
+                    next_api_id = max(max_api_id + 1, 1000)
+                    
+                    try:
+                        # Crea nuovo bookmaker se non esiste
+                        bookmaker_info = BookmakerInfo(
+                            api_id=next_api_id,  # ID univoco auto-incrementale
+                            name=bookmaker_name,
+                            display_name=bookmaker_name,
+                            is_active=True
+                        )
+                        db.add(bookmaker_info)
+                        db.flush()  # Flush invece di commit per gestire errori nella transaction
+                    except Exception as e:
+                        # Se fallisce (race condition), ri-cerca il bookmaker
+                        db.rollback()
+                        bookmaker_info = db.query(BookmakerInfo).filter(
+                            BookmakerInfo.name == bookmaker_name
+                        ).first()
+                        if not bookmaker_info:
+                            raise e  # Se ancora non esiste, rilancia l'errore
                 
                 # Determina il tipo di mercato in base all'outcome
                 market_type, market_subtype = self._determine_market_type(outcome_type)
