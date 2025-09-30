@@ -206,9 +206,9 @@ async def get_fixtures_by_date_range(
 ):
     """🎯 FIXED: Rispetta i parametri start_date e end_date per il range richiesto"""
     
-    print(f"Frontend requested range {start_date} to {end_date}")
+    print(f"[OPERATOR] Requested range {start_date} to {end_date}")
     
-    # Raccogli partite per ogni giorno nel range
+    # Raccogli partite per ogni giorno nel range (solo future)
     daily_fixtures = []
     current_date = start_date
     total_matches = 0
@@ -219,6 +219,8 @@ async def get_fixtures_by_date_range(
             daily_fixtures.append(day_fixtures)
             total_matches += day_fixtures.total_matches
         current_date += timedelta(days=1)
+    
+    print(f"[OPERATOR] Returning {total_matches} upcoming matches (past matches filtered out)")
     
     return FixturesByDateRangeResponse(
         start_date=start_date.isoformat(),
@@ -236,11 +238,11 @@ async def get_live_fixtures(
     try:
         now = datetime.now()
         
-        # Cerca partite che dovrebbero essere live:
-        # 1. Partite iniziate nelle ultime 2 ore (in corso)
+        # Cerca solo partite che dovrebbero essere REALMENTE live:
+        # 1. Partite iniziate max 2.5 ore fa (durata partita + extra time)
         # 2. Partite che iniziano nei prossimi 15 minuti (pre-live)
-        start_time = now - timedelta(hours=2)  # Partite iniziate max 2 ore fa
-        end_time = now + timedelta(minutes=15)  # Partite che iniziano nei prossimi 15 min
+        start_time = now - timedelta(hours=2, minutes=30)  # Max 2.5 ore fa
+        end_time = now + timedelta(minutes=15)  # Prossimi 15 min
         
         query = db.query(FixtureTrackingStatus).filter(
             and_(
@@ -255,14 +257,21 @@ async def get_live_fixtures(
         live_matches = []
         for fixture in fixtures:
             try:
+                # Verifica se la partita è veramente live o dovrebbe essere finita
+                match_time = fixture.fixture_date
+                time_since_start = (now - match_time).total_seconds() / 60  # minuti
+                
+                # Se la partita è iniziata più di 120 minuti fa, probabilmente è finita
+                if time_since_start > 120:
+                    continue
+                
                 fixture_data = await _build_fixture_response(fixture, db)
-                # Include TUTTE le live matches (con o senza odds)
                 live_matches.append(fixture_data)
             except Exception as e:
                 print(f"Error building live fixture {fixture.fixture_id}: {str(e)}")
                 continue
         
-        print(f"Operator Live: {len(live_matches)} live/pre-live matches found (started in last 2h or starting in next 15min)")
+        print(f"[OPERATOR] Returning {len(live_matches)} actual live/pre-live matches")
         return live_matches
         
     except Exception as e:
@@ -311,11 +320,18 @@ async def get_upcoming_fixtures(
     return result
 
 async def _get_fixtures_by_date(target_date: date, league_id: Optional[int], db: Session) -> FixturesByDateResponse:
-    """Helper per ottenere partite per una data specifica"""
+    """Helper per ottenere partite per una data specifica (solo future)"""
     try:
-        # Usa un approccio più robusto per il filtro data con SQLite
-        start_datetime = datetime.combine(target_date, time(0, 0, 0))
-        end_datetime = datetime.combine(target_date, time(23, 59, 59))
+        now = datetime.now()
+        
+        # Se la data target è oggi, filtra solo partite future dalla ora corrente
+        if target_date == now.date():
+            start_datetime = now  # Dalla ora corrente in poi
+            end_datetime = datetime.combine(target_date, time(23, 59, 59))
+        else:
+            # Per altre date, mostra tutte le partite del giorno
+            start_datetime = datetime.combine(target_date, time(0, 0, 0))
+            end_datetime = datetime.combine(target_date, time(23, 59, 59))
         
         query = db.query(FixtureTrackingStatus).filter(
             and_(
