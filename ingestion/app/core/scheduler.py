@@ -315,28 +315,34 @@ class OddsTrackingScheduler:
             logger.error(f"Error collecting future predictions: {str(e)}")
     
     async def _daily_cleanup_loop(self):
-        """Loop di pulizia giornaliera (separato dai macro processi)"""
+        """Loop di pulizia frequente (ogni ora per match finiti, daily per dati vecchi)"""
+        last_daily_cleanup = None
+        
         while self.running:
             try:
-                logger.info("🧹 Starting daily cleanup cycle")
+                logger.info("🧹 Starting cleanup cycle (hourly)")
                 
                 db = next(get_db())
                 try:
-                    # Pulizia match finiti
+                    # Pulizia match finiti (OGNI ORA)
                     match_stats = await cleanup_service.cleanup_finished_matches(db)
+                    logger.info(f"🧹 Hourly cleanup completed: {match_stats}")
                     
-                    # Pulizia dati vecchi
-                    await self._cleanup_old_data(db)
-                    
-                    logger.info(f"🧹 Daily cleanup completed: {match_stats}")
+                    # Pulizia dati vecchi (SOLO 1 VOLTA AL GIORNO)
+                    now = datetime.now()
+                    if last_daily_cleanup is None or (now - last_daily_cleanup).total_seconds() >= 86400:
+                        await self._cleanup_old_data(db)
+                        last_daily_cleanup = now
+                        logger.info(f"🧹 Daily cleanup (old data) completed")
+                        
                 finally:
                     db.close()
                 
             except Exception as e:
-                logger.error(f"Error in daily cleanup: {str(e)}")
+                logger.error(f"Error in cleanup loop: {str(e)}")
             
-            # Attendi 24 ore prima del prossimo cleanup
-            await asyncio.sleep(86400)
+            # ✅ Attendi 1 ora prima del prossimo cleanup (invece di 24 ore!)
+            await asyncio.sleep(3600)  # 1 ora
     
     async def _cleanup_old_data(self, db):
         """Pulisce i dati più vecchi del periodo di retention"""

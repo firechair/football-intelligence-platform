@@ -317,9 +317,9 @@ async def get_live_fixtures(
         
         print(f"[OPERATOR] Returning {len(live_matches)} actual live/pre-live matches")
         
-        # 🔴 CACHE: Salva in cache per 10 secondi (live matches cambiano rapidamente)
-        cache_service.set(cache_key, live_matches, ttl_seconds=10)
-        print(f"[OPERATOR] 💾 Cached {len(live_matches)} live fixtures (10s)")
+        # 🔴 CACHE: Salva in cache per 5 secondi (live matches cambiano rapidamente)
+        cache_service.set(cache_key, live_matches, ttl_seconds=5)
+        print(f"[OPERATOR] 💾 Cached {len(live_matches)} live fixtures (5s)")
         
         return live_matches
         

@@ -18,46 +18,51 @@ class MatchCleanupService:
     
     async def cleanup_finished_matches(self, db: Session) -> Dict[str, Any]:
         """
-        Pulisce i dati di match finiti dal database
-        Gestisce fino a 30+ match contemporaneamente senza errori
+        ⚡ OTTIMIZZATO: Marca partite finite senza chiamate API
+        Partite iniziate > 2 ore fa vengono marcate come 'completed'
         """
         cleanup_stats = {
             "matches_checked": 0,
             "matches_finished": 0,
-            "odds_records_deleted": 0,
-            "predictions_records_deleted": 0,  # 🆕 NUOVO
             "tracking_records_updated": 0,
             "errors": []
         }
         
         try:
-            # Ottieni match attivi che potrebbero essere finiti
-            active_fixtures = self._get_active_fixtures_to_check(db)
-            cleanup_stats["matches_checked"] = len(active_fixtures)
+            # ✅ SEMPLICE: Marca come 'completed' tutte le partite iniziate > 2 ore fa
+            cutoff_time = datetime.now() - timedelta(hours=2)
             
-            if not active_fixtures:
-                logger.info("No active fixtures to check for cleanup")
+            finished_fixtures = db.query(FixtureTrackingStatus).filter(
+                and_(
+                    FixtureTrackingStatus.tracking_status.in_(["active", "pending", "live"]),
+                    FixtureTrackingStatus.fixture_date < cutoff_time
+                )
+            ).all()
+            
+            cleanup_stats["matches_checked"] = len(finished_fixtures)
+            
+            if not finished_fixtures:
+                logger.info("No finished fixtures to cleanup")
                 return cleanup_stats
             
-            # Controlla stato dei match in batch per rispettare rate limits
-            finished_fixtures = await self._check_fixtures_status_batch(active_fixtures)
-            cleanup_stats["matches_finished"] = len(finished_fixtures)
+            # Marca tutte come 'completed' in una singola transaction
+            updated_count = 0
+            for fixture in finished_fixtures:
+                fixture.tracking_status = "completed"
+                updated_count += 1
             
-            if finished_fixtures:
-                # Pulisci i dati in batch per evitare lock del database
-                deleted_odds, deleted_predictions, updated_tracking = await self._cleanup_fixtures_batch(finished_fixtures, db)
-                cleanup_stats["odds_records_deleted"] = deleted_odds
-                cleanup_stats["predictions_records_deleted"] = deleted_predictions  # 🆕 NUOVO
-                cleanup_stats["tracking_records_updated"] = updated_tracking
-                
-                logger.info(f"Cleanup completed: {len(finished_fixtures)} finished matches, "
-                          f"{deleted_odds} odds deleted, {deleted_predictions} predictions deleted, "
-                          f"{updated_tracking} tracking updated")
+            db.commit()
+            
+            cleanup_stats["matches_finished"] = updated_count
+            cleanup_stats["tracking_records_updated"] = updated_count
+            
+            logger.info(f"✅ Cleanup completed: {updated_count} matches marked as completed")
         
         except Exception as e:
             error_msg = f"Error in cleanup process: {str(e)}"
             cleanup_stats["errors"].append(error_msg)
             logger.error(error_msg)
+            db.rollback()
         
         return cleanup_stats
     
