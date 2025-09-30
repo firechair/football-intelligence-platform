@@ -273,9 +273,9 @@ async def get_live_fixtures(
         now = datetime.utcnow()
         
         # Cerca solo partite che dovrebbero essere REALMENTE live:
-        # 1. Partite iniziate max 2.5 ore fa (durata partita + extra time)
+        # 1. Partite iniziate max 1.5 ore fa (durata partita normale)
         # 2. Partite che iniziano nei prossimi 15 minuti (pre-live)
-        start_time = now - timedelta(hours=2, minutes=30)  # Max 2.5 ore fa
+        start_time = now - timedelta(hours=1, minutes=30)  # Max 1.5 ore fa
         end_time = now + timedelta(minutes=15)  # Prossimi 15 min
         
         print(f"[OPERATOR] 🔍 LIVE FILTER (UTC): Current time: {now.isoformat()}")
@@ -298,8 +298,9 @@ async def get_live_fixtures(
                 match_time = fixture.fixture_date
                 time_since_start = (now - match_time).total_seconds() / 60  # minuti
                 
-                # Se la partita è iniziata più di 120 minuti fa, probabilmente è finita
-                if time_since_start > 120:
+                # Se la partita è iniziata più di 90 minuti fa, probabilmente è finita
+                if time_since_start > 90:
+                    print(f"[OPERATOR] 🔍 Skipping finished match: {fixture.home_team} vs {fixture.away_team} (started {time_since_start:.1f} min ago)")
                     continue
                 
                 fixture_data = await _build_fixture_response(fixture, db)
