@@ -269,17 +269,15 @@ async def get_live_fixtures(
     print(f"[OPERATOR] ❌ Cache MISS - Querying DB for live fixtures")
     
     try:
-        # Usa UTC per evitare problemi di timezone
-        now = datetime.utcnow()
+        now = datetime.now()
         
-        # Cerca solo partite che dovrebbero essere REALMENTE live:
-        # 1. Partite iniziate max 1.5 ore fa (durata partita normale)
-        # 2. Partite che iniziano nei prossimi 15 minuti (pre-live)
-        start_time = now - timedelta(hours=1, minutes=30)  # Max 1.5 ore fa
-        end_time = now + timedelta(minutes=15)  # Prossimi 15 min
+        # 🔴 FILTRO STRETTO: Solo partite realmente live
+        # 1. Partite iniziate max 105 minuti fa (90min + 15min extra)
+        # 2. Partite che iniziano nei prossimi 5 minuti (pre-live imminente)
+        start_time = now - timedelta(minutes=105)  # Max 105 minuti fa (90 + 15)
+        end_time = now + timedelta(minutes=5)  # Prossimi 5 min
         
-        print(f"[OPERATOR] 🔍 LIVE FILTER (UTC): Current time: {now.isoformat()}")
-        print(f"[OPERATOR] 🔍 LIVE FILTER: Range: {start_time.isoformat()} to {end_time.isoformat()}")
+        print(f"[OPERATOR] Live fixtures query: {start_time} <= fixture_date <= {end_time}")
         
         query = db.query(FixtureTrackingStatus).filter(
             and_(
@@ -291,6 +289,8 @@ async def get_live_fixtures(
         
         fixtures = query.order_by(FixtureTrackingStatus.fixture_date.desc()).limit(limit).all()
         
+        print(f"[OPERATOR] Found {len(fixtures)} potential live fixtures in database")
+        
         live_matches = []
         for fixture in fixtures:
             try:
@@ -298,22 +298,28 @@ async def get_live_fixtures(
                 match_time = fixture.fixture_date
                 time_since_start = (now - match_time).total_seconds() / 60  # minuti
                 
-                # Se la partita è iniziata più di 90 minuti fa, probabilmente è finita
-                if time_since_start > 90:
-                    print(f"[OPERATOR] 🔍 Skipping finished match: {fixture.home_team} vs {fixture.away_team} (started {time_since_start:.1f} min ago)")
+                # Se la partita è iniziata più di 105 minuti fa, è finita
+                if time_since_start > 105:
+                    print(f"[OPERATOR] Skipping fixture {fixture.fixture_id} - started {time_since_start:.0f} min ago (finished)")
+                    continue
+                
+                # Se la partita inizia tra più di 5 minuti, non è ancora live
+                if time_since_start < -5:
+                    print(f"[OPERATOR] Skipping fixture {fixture.fixture_id} - starts in {-time_since_start:.0f} min (too early)")
                     continue
                 
                 fixture_data = await _build_fixture_response(fixture, db)
                 live_matches.append(fixture_data)
+                print(f"[OPERATOR] Added live fixture {fixture.fixture_id} - time since start: {time_since_start:.0f} min")
             except Exception as e:
-                print(f"Error building live fixture {fixture.fixture_id}: {str(e)}")
+                print(f"[OPERATOR] Error building live fixture {fixture.fixture_id}: {str(e)}")
                 continue
         
         print(f"[OPERATOR] Returning {len(live_matches)} actual live/pre-live matches")
         
-        # 🔴 CACHE: Salva in cache per 30 secondi (live matches cambiano velocemente)
-        cache_service.set(cache_key, live_matches, ttl_seconds=30)
-        print(f"[OPERATOR] 💾 Cached {len(live_matches)} live fixtures (30s)")
+        # 🔴 CACHE: Salva in cache per 10 secondi (live matches cambiano rapidamente)
+        cache_service.set(cache_key, live_matches, ttl_seconds=10)
+        print(f"[OPERATOR] 💾 Cached {len(live_matches)} live fixtures (10s)")
         
         return live_matches
         
@@ -365,19 +371,16 @@ async def get_upcoming_fixtures(
 async def _get_fixtures_by_date(target_date: date, league_id: Optional[int], db: Session) -> FixturesByDateResponse:
     """Helper per ottenere partite per una data specifica (solo future)"""
     try:
-        # Usa UTC per evitare problemi di timezone
-        now = datetime.utcnow()
+        now = datetime.now()
         
         # Se la data target è oggi, filtra solo partite future dalla ora corrente
         if target_date == now.date():
             start_datetime = now  # Dalla ora corrente in poi
             end_datetime = datetime.combine(target_date, time(23, 59, 59))
-            print(f"[OPERATOR] 🔍 FILTERING TODAY (UTC): Current time: {now.isoformat()}, Filtering from: {start_datetime.isoformat()}")
         else:
             # Per altre date, mostra tutte le partite del giorno
             start_datetime = datetime.combine(target_date, time(0, 0, 0))
             end_datetime = datetime.combine(target_date, time(23, 59, 59))
-            print(f"[OPERATOR] 🔍 OTHER DATE: {target_date}, Range: {start_datetime.isoformat()} to {end_datetime.isoformat()}")
         
         query = db.query(FixtureTrackingStatus).filter(
             and_(
@@ -391,11 +394,6 @@ async def _get_fixtures_by_date(target_date: date, league_id: Optional[int], db:
             query = query.filter(FixtureTrackingStatus.league_id == league_id)
         
         fixtures = query.order_by(FixtureTrackingStatus.fixture_date).all()
-        
-        print(f"[OPERATOR] 🔍 Query returned {len(fixtures)} fixtures")
-        if fixtures:
-            print(f"[OPERATOR] 🔍 First fixture time: {fixtures[0].fixture_date.isoformat()}")
-            print(f"[OPERATOR] 🔍 Last fixture time: {fixtures[-1].fixture_date.isoformat()}")
         
         matches = []
         successful_count = 0
