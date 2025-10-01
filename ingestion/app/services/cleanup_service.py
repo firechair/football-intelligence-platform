@@ -18,13 +18,14 @@ class MatchCleanupService:
     
     async def cleanup_finished_matches(self, db: Session) -> Dict[str, Any]:
         """
-        ⚡ OTTIMIZZATO: Marca partite finite senza chiamate API
+        ⚡ OTTIMIZZATO: Marca partite finite senza chiamate API + Invalida cache
         Partite iniziate > 2 ore fa vengono marcate come 'completed'
         """
         cleanup_stats = {
             "matches_checked": 0,
             "matches_finished": 0,
             "tracking_records_updated": 0,
+            "cache_cleared": False,
             "errors": []
         }
         
@@ -55,6 +56,15 @@ class MatchCleanupService:
             
             cleanup_stats["matches_finished"] = updated_count
             cleanup_stats["tracking_records_updated"] = updated_count
+            
+            # ✅ INVALIDA LA CACHE dopo aver aggiornato gli stati
+            try:
+                from app.services.cache_service import cache_service
+                cache_service.clear_pattern("fixtures:*")
+                cleanup_stats["cache_cleared"] = True
+                logger.info("✅ Cache invalidated after cleanup")
+            except Exception as cache_error:
+                logger.warning(f"⚠️ Failed to clear cache: {cache_error}")
             
             logger.info(f"✅ Cleanup completed: {updated_count} matches marked as completed")
         

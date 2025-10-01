@@ -257,9 +257,9 @@ async def get_live_fixtures(
     limit: int = Query(50, ge=1, le=100, description="Max live fixtures to return"),
     db: Session = Depends(get_db)
 ):
-    """🔴 Partite LIVE con CACHE (30s) - quote aggiornate dal database (ZERO API calls)"""
+    """🔴 Partite LIVE REALI con CACHE (3s) - solo partite in corso o imminenti"""
     
-    # 🔴 CACHE: Prova a recuperare dalla cache (TTL 30s per live)
+    # 🔴 CACHE: Prova a recuperare dalla cache (TTL 3s per live)
     cache_key = get_live_fixtures_cache_key()
     cached_response = cache_service.get(cache_key)
     if cached_response:
@@ -271,19 +271,21 @@ async def get_live_fixtures(
     try:
         now = datetime.now()
         
-        # 🔴 FILTRO STRETTO: Solo partite realmente live
+        # ✅ FILTRO OTTIMIZZATO: Solo partite REALMENTE live
         # 1. Partite iniziate max 105 minuti fa (90min + 15min extra)
         # 2. Partite che iniziano nei prossimi 5 minuti (pre-live imminente)
-        start_time = now - timedelta(minutes=105)  # Max 105 minuti fa (90 + 15)
+        start_time = now - timedelta(minutes=105)  # Max 105 minuti fa
         end_time = now + timedelta(minutes=5)  # Prossimi 5 min
         
-        print(f"[OPERATOR] Live fixtures query: {start_time} <= fixture_date <= {end_time}")
+        print(f"[OPERATOR] Live fixtures query: {start_time.strftime('%H:%M:%S')} <= fixture_date <= {end_time.strftime('%H:%M:%S')}")
         
+        # ✅ ESCLUDI ESPLICITAMENTE LE PARTITE COMPLETATE
         query = db.query(FixtureTrackingStatus).filter(
             and_(
                 FixtureTrackingStatus.fixture_date >= start_time,
                 FixtureTrackingStatus.fixture_date <= end_time,
-                FixtureTrackingStatus.tracking_status.in_(["active", "live", "pending"])
+                FixtureTrackingStatus.tracking_status.in_(["active", "live", "pending"]),
+                FixtureTrackingStatus.tracking_status != "completed"  # ✅ ESCLUDI COMPLETATE
             )
         )
         
@@ -298,33 +300,33 @@ async def get_live_fixtures(
                 match_time = fixture.fixture_date
                 time_since_start = (now - match_time).total_seconds() / 60  # minuti
                 
-                # Se la partita è iniziata più di 105 minuti fa, è finita
+                # ✅ DOPPIO CONTROLLO: Se la partita è iniziata più di 105 minuti fa, è finita
                 if time_since_start > 105:
-                    print(f"[OPERATOR] Skipping fixture {fixture.fixture_id} - started {time_since_start:.0f} min ago (finished)")
+                    print(f"[OPERATOR] ⚠️ Skipping fixture {fixture.fixture_id} - started {time_since_start:.0f} min ago (should be marked completed)")
                     continue
                 
-                # Se la partita inizia tra più di 5 minuti, non è ancora live
+                # ✅ Se la partita inizia tra più di 5 minuti, non è ancora live
                 if time_since_start < -5:
-                    print(f"[OPERATOR] Skipping fixture {fixture.fixture_id} - starts in {-time_since_start:.0f} min (too early)")
+                    print(f"[OPERATOR] ⏰ Skipping fixture {fixture.fixture_id} - starts in {-time_since_start:.0f} min (too early)")
                     continue
                 
                 fixture_data = await _build_fixture_response(fixture, db)
                 live_matches.append(fixture_data)
-                print(f"[OPERATOR] Added live fixture {fixture.fixture_id} - time since start: {time_since_start:.0f} min")
+                print(f"[OPERATOR] ✅ Added live fixture {fixture.fixture_id} ({fixture.home_team} vs {fixture.away_team}) - time: {time_since_start:.0f} min")
             except Exception as e:
-                print(f"[OPERATOR] Error building live fixture {fixture.fixture_id}: {str(e)}")
+                print(f"[OPERATOR] ❌ Error building live fixture {fixture.fixture_id}: {str(e)}")
                 continue
         
-        print(f"[OPERATOR] Returning {len(live_matches)} actual live/pre-live matches")
+        print(f"[OPERATOR] 🎯 Returning {len(live_matches)} REAL live/pre-live matches")
         
-        # 🔴 CACHE: Salva in cache per 5 secondi (live matches cambiano rapidamente)
-        cache_service.set(cache_key, live_matches, ttl_seconds=5)
-        print(f"[OPERATOR] 💾 Cached {len(live_matches)} live fixtures (5s)")
+        # 🔴 CACHE: Salva in cache per 3 secondi (ridotto da 5s per aggiornamenti più frequenti)
+        cache_service.set(cache_key, live_matches, ttl_seconds=3)
+        print(f"[OPERATOR] 💾 Cached {len(live_matches)} live fixtures (3s TTL)")
         
         return live_matches
         
     except Exception as e:
-        print(f"Error in get_live_fixtures: {str(e)}")
+        print(f"[OPERATOR] ❌ Error in get_live_fixtures: {str(e)}")
         return []
 
 @router.get("/upcoming", response_model=List[FixtureResponse])
@@ -369,7 +371,7 @@ async def get_upcoming_fixtures(
     return result
 
 async def _get_fixtures_by_date(target_date: date, league_id: Optional[int], db: Session) -> FixturesByDateResponse:
-    """Helper per ottenere partite per una data specifica (solo future)"""
+    """Helper per ottenere partite per una data specifica (solo future e non completate)"""
     try:
         now = datetime.now()
         
@@ -382,11 +384,13 @@ async def _get_fixtures_by_date(target_date: date, league_id: Optional[int], db:
             start_datetime = datetime.combine(target_date, time(0, 0, 0))
             end_datetime = datetime.combine(target_date, time(23, 59, 59))
         
+        # ✅ FILTRO MIGLIORATO: Escludi esplicitamente le partite "completed"
         query = db.query(FixtureTrackingStatus).filter(
             and_(
                 FixtureTrackingStatus.fixture_date >= start_datetime,
                 FixtureTrackingStatus.fixture_date <= end_datetime,
-                FixtureTrackingStatus.tracking_status.in_(["pending", "active"])
+                FixtureTrackingStatus.tracking_status.in_(["pending", "active"]),
+                FixtureTrackingStatus.tracking_status != "completed"  # Escludi completate
             )
         )
         
