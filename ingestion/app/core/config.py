@@ -54,13 +54,15 @@ class OddsTrackerSettings:
     # 🔴 REDIS CACHE (opzionale - fallback a in-memory se non disponibile)
     REDIS_URL: str = os.getenv("REDIS_URL", "")  # es: redis://red-abc123:6379
     
-    # CORS Origins (production domains)
+    # CORS Origins (production domains + local development)
     ALLOWED_ORIGINS: list = [
         "https://example.invalid",  # Operator production URL
         "https://example.invalid",  # Main backend production URL
-        "http://localhost:3000",  # Local development
+        "http://localhost:3000",  # Local frontend development
         "http://localhost:3001",  # Frontend di test
-        "http://localhost:5173"   # Vite dev server
+        "http://localhost:5173",  # Vite dev server
+        "http://localhost:8080",  # Local operator
+        "*"  # Allow all origins for development (will be restricted in production by Railway env)
     ]
 
 settings = OddsTrackerSettings()
