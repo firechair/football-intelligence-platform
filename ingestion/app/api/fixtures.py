@@ -277,7 +277,7 @@ async def get_live_fixtures(
     limit: int = Query(50, ge=1, le=100, description="Max live fixtures to return"),
     db: Session = Depends(get_db)
 ):
-    """🔴 Partite LIVE REALI con CACHE (3s) - solo partite in corso o imminenti"""
+    """🔴 Partite LIVE e RECENTI con CACHE (3s) - partite negli ultimi 4h + prossime"""
     
     # 🔴 CACHE: Prova a recuperare dalla cache (TTL 3s per live)
     cache_key = get_live_fixtures_cache_key()
@@ -291,11 +291,11 @@ async def get_live_fixtures(
     try:
         now = datetime.now()
         
-        # ✅ FILTRO OTTIMIZZATO: Solo partite REALMENTE live
-        # 1. Partite iniziate max 105 minuti fa (90min + 15min extra)
-        # 2. Partite che iniziano nei prossimi 5 minuti (pre-live imminente)
-        start_time = now - timedelta(minutes=105)  # Max 105 minuti fa
-        end_time = now + timedelta(minutes=5)  # Prossimi 5 min
+        # ✅ FILTRO ALLARGATO: Partite live e recently played
+        # 1. Partite iniziate max 4 ore fa (per includere partite completate di recente)
+        # 2. Partite che iniziano nei prossimi 60 minuti (pre-live)
+        start_time = now - timedelta(hours=4)  # Max 4 ore fa
+        end_time = now + timedelta(minutes=60)  # Prossimi 60 min
         
         print(f"[OPERATOR] Live fixtures query: {start_time.strftime('%H:%M:%S')} <= fixture_date <= {end_time.strftime('%H:%M:%S')}")
         
@@ -320,8 +320,8 @@ async def get_live_fixtures(
                 match_time = fixture.fixture_date
                 time_since_start = (now - match_time).total_seconds() / 60  # minuti
 
-                # ✅ DOPPIO CONTROLLO: Se la partita è iniziata più di 105 minuti fa, è finita
-                if time_since_start > 105:
+                # ✅ DOPPIO CONTROLLO: Se la partita è iniziata più di 4 ore fa, è troppo vecchia
+                if time_since_start > 240:  # 4 ore in minuti
                     print(f"[OPERATOR] ⚠️ Skipping fixture {fixture.fixture_id} - started {time_since_start:.0f} min ago (should be marked completed)")
                     continue
 
