@@ -319,20 +319,23 @@ async def get_live_fixtures(
                 # Verifica se la partita è veramente live o dovrebbe essere finita
                 match_time = fixture.fixture_date
                 time_since_start = (now - match_time).total_seconds() / 60  # minuti
-                
+
                 # ✅ DOPPIO CONTROLLO: Se la partita è iniziata più di 105 minuti fa, è finita
                 if time_since_start > 105:
                     print(f"[OPERATOR] ⚠️ Skipping fixture {fixture.fixture_id} - started {time_since_start:.0f} min ago (should be marked completed)")
                     continue
-                
+
                 # ✅ Se la partita inizia tra più di 5 minuti, non è ancora live
                 if time_since_start < -5:
                     print(f"[OPERATOR] ⏰ Skipping fixture {fixture.fixture_id} - starts in {-time_since_start:.0f} min (too early)")
                     continue
-                
-        fixture_data = await _build_fixture_response(fixture, db)
-        live_matches.append(fixture_data)
-        print(f"[OPERATOR] ✅ Added live fixture {fixture.fixture_id} ({fixture.home_team} vs {fixture.away_team}) - time: {time_since_start:.0f} min")
+
+                fixture_data = await _build_fixture_response(fixture, db)
+                live_matches.append(fixture_data)
+                print(f"[OPERATOR] ✅ Added live fixture {fixture.fixture_id} ({fixture.home_team} vs {fixture.away_team}) - time: {time_since_start:.0f} min")
+            except Exception as e:
+                print(f"[OPERATOR] ❌ Error building live fixture {fixture.fixture_id}: {str(e)}")
+                continue
         
         print(f"[OPERATOR] 🎯 Returning {len(live_matches)} REAL live/pre-live matches")
         

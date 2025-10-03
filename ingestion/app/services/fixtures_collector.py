@@ -68,7 +68,7 @@ class FixturesCollector:
                 new_tracking = FixtureTrackingStatus(
                     fixture_id=fixture_id,
                     league_id=league_data.get("id"),
-                    league_name=league_data.get("name"))
+                    league_name=league_data.get("name"),
                     # country_name=league_data.get("country"),  # TEMPORANEAMENTE COMMENTATO
                     home_team=teams_data.get("home", {}).get("name", "Unknown"),
                     away_team=teams_data.get("away", {}).get("name", "Unknown"),
