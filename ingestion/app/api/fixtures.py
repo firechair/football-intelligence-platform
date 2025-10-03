@@ -330,25 +330,9 @@ async def get_live_fixtures(
                     print(f"[OPERATOR] ⏰ Skipping fixture {fixture.fixture_id} - starts in {-time_since_start:.0f} min (too early)")
                     continue
                 
-        try:
-            fixture_data = await _build_fixture_response(fixture, db)
-            live_matches.append(fixture_data)
-            print(f"[OPERATOR] ✅ Added live fixture {fixture.fixture_id} ({fixture.home_team} vs {fixture.away_team}) - time: {time_since_start:.0f} min")
-        except Exception as e:
-            print(f"[OPERATOR] ❌ Error building fixture {fixture.fixture_id}: {str(e)}")
-            # Se l'errore è relativo a country_name, continua senza quella colonna
-            if "country_name" in str(e):
-                print(f"[OPERATOR] ⚠️ Skipping country_name for fixture {fixture.fixture_id}")
-                try:
-                    # Riprova senza country_name
-                    fixture_data = await _build_fixture_response_no_country(fixture, db)
-                    live_matches.append(fixture_data)
-                    print(f"[OPERATOR] ✅ Added live fixture {fixture.fixture_id} (no country) ({fixture.home_team} vs {fixture.away_team})")
-                except Exception as e2:
-                    print(f"[OPERATOR] ❌ Still failed for fixture {fixture.fixture_id}: {str(e2)}")
-            else:
-                print(f"[OPERATOR] ❌ Other error for fixture {fixture.fixture_id}: {str(e)}")
-                continue
+        fixture_data = await _build_fixture_response(fixture, db)
+        live_matches.append(fixture_data)
+        print(f"[OPERATOR] ✅ Added live fixture {fixture.fixture_id} ({fixture.home_team} vs {fixture.away_team}) - time: {time_since_start:.0f} min")
         
         print(f"[OPERATOR] 🎯 Returning {len(live_matches)} REAL live/pre-live matches")
         
@@ -458,19 +442,7 @@ async def _get_fixtures_by_date(target_date: date, league_id: Optional[int], db:
             except Exception as e:
                 # Log error but continue with other fixtures
                 print(f"Error building fixture response for {fixture.fixture_id}: {str(e)}")
-                # Se l'errore è relativo a country_name, riprova senza
-                if "country_name" in str(e):
-                    print(f"[OPERATOR] ⚠️ Retrying fixture {fixture.fixture_id} without country_name")
-                    try:
-                        fixture_data = await _build_fixture_response_no_country(fixture, db)
-                        matches.append(fixture_data)
-                        successful_count += 1
-                        print(f"[OPERATOR] ✅ Fixed fixture {fixture.fixture_id} (no country)")
-                    except Exception as e2:
-                        print(f"Error building fixture response (no country) for {fixture.fixture_id}: {str(e2)}")
-                        error_count += 1
-                else:
-                    error_count += 1
+                error_count += 1
                 continue
         
         print(f"Processed {len(fixtures)} fixtures: {successful_count} with 1X2 odds included, {error_count} without odds (filtered out)")
