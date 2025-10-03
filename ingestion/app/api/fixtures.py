@@ -588,7 +588,7 @@ async def _build_fixture_response(fixture: FixtureTrackingStatus, db: Session) -
         fixture_date=fixture.fixture_date,
         league_id=fixture.league_id,
         league_name=fixture.league_name,
-        country_name=fixture.country_name,  # Paese della lega
+        country_name=getattr(fixture, 'country_name', None),  # Paese della lega
         league_logo=league_logo,
         best_odds=best_odds,
         prediction=None  # Non più caricato per performance
