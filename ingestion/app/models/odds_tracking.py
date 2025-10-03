@@ -63,6 +63,7 @@ class FixtureTrackingStatus(Base):
     # Identificazione partita
     league_id = Column(Integer, nullable=True, index=True)
     league_name = Column(String(200), nullable=True)
+    country_name = Column(String(100), nullable=True)  # Paese della lega
     home_team = Column(String(100), nullable=False)
     away_team = Column(String(100), nullable=False)
     fixture_date = Column(DateTime, nullable=False, index=True)

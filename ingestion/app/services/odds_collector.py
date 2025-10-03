@@ -249,18 +249,21 @@ class OddsCollector:
                 if fixture_odds:
                     odds_map[fixture_id] = fixture_odds
                     collection_stats["fixtures_processed"] += 1
-                    
+
                     # Processa e salva le quote nel database usando il metodo avanzato
                     try:
                         quotes_saved = await self._process_fixture_odds(fixture_id, fixture_odds, db)
                         collection_stats["quotes_collected"] += quotes_saved
                         collection_stats["bookmakers_found"].add("API-Football")  # Placeholder
                         collection_stats["markets_found"].add("1X2")  # Placeholder
+                        logger.info(f"✅ Successfully collected {quotes_saved} odds for fixture {fixture_id}")
                     except Exception as e:
                         logger.error(f"Error processing odds for fixture {fixture_id}: {str(e)}")
                         collection_stats["errors"].append(f"Error processing fixture {fixture_id}: {str(e)}")
                 else:
-                    collection_stats["errors"].append(f"No odds data for fixture {fixture_id}")
+                    # Non è un errore se non ci sono quote - molte partite non le hanno ancora
+                    logger.debug(f"ℹ️ No odds available yet for fixture {fixture_id} (normal for distant matches)")
+                    collection_stats["fixtures_processed"] += 1
                 
                 # Rate limiting: massimo 2 chiamate/secondo
                 # Attendi 0.5 secondi tra ogni chiamata per rispettare il limite

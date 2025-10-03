@@ -59,6 +59,9 @@ class FixturesCollector:
                 existing.home_team_logo = teams_data.get("home", {}).get("logo")
                 existing.away_team_logo = teams_data.get("away", {}).get("logo")
                 existing.league_logo = league_data.get("logo")
+                # Aggiorna country_name se disponibile e non già impostato
+                if league_data.get("country") and not existing.country_name:
+                    existing.country_name = league_data.get("country")
                 existing.updated_at = datetime.now()
             else:
                 # Crea nuovo record
@@ -66,6 +69,7 @@ class FixturesCollector:
                     fixture_id=fixture_id,
                     league_id=league_data.get("id"),
                     league_name=league_data.get("name"),
+                    country_name=league_data.get("country"),  # Paese della lega
                     home_team=teams_data.get("home", {}).get("name", "Unknown"),
                     away_team=teams_data.get("away", {}).get("name", "Unknown"),
                     fixture_date=datetime.fromisoformat(
@@ -83,29 +87,38 @@ class FixturesCollector:
         logger.info(f"Updated tracking status for {len(fixtures)} fixtures")
     
     async def get_active_fixtures_for_tracking(self, db: Session) -> List[int]:
-        """Restituisce fixture ID che devono essere trackati, con priorità per partite giornaliere"""
+        """Restituisce fixture ID che devono essere trackati, FILTRANDO solo quelle SENZA quote per evitare spreco API"""
+        from app.models.odds_tracking import ExtendedOddsHistory
+
         cutoff_date = datetime.now() - timedelta(hours=2)  # Non tracciare partite iniziate da più di 2 ore
         future_date = datetime.now() + timedelta(days=10)
-        
-        # Priorità 1: Partite di oggi e domani (prossime 24 ore)
+
+        # Subquery: fixtures che HANNO già quote 1X2 (per escluderle)
+        fixtures_with_odds = db.query(ExtendedOddsHistory.fixture_id.distinct()).filter(
+            ExtendedOddsHistory.market_name.in_(["1", "X", "2"])
+        )
+
+        # Priorità 1: Partite di oggi e domani (prossime 24 ore) SENZA quote
         tomorrow_end = datetime.now() + timedelta(hours=24)
         daily_fixtures = db.query(FixtureTrackingStatus).filter(
             FixtureTrackingStatus.fixture_date > cutoff_date,
             FixtureTrackingStatus.fixture_date <= tomorrow_end,
-            FixtureTrackingStatus.tracking_status.in_(["pending", "active"])
+            FixtureTrackingStatus.tracking_status.in_(["pending", "active"]),
+            ~FixtureTrackingStatus.fixture_id.in_(fixtures_with_odds)  # NON hanno quote
         ).order_by(FixtureTrackingStatus.fixture_date).all()
-        
-        # Priorità 2: Altre partite future (dopo 24 ore)
+
+        # Priorità 2: Altre partite future (dopo 24 ore) SENZA quote
         other_fixtures = db.query(FixtureTrackingStatus).filter(
             FixtureTrackingStatus.fixture_date > tomorrow_end,
             FixtureTrackingStatus.fixture_date < future_date,
-            FixtureTrackingStatus.tracking_status.in_(["pending", "active"])
+            FixtureTrackingStatus.tracking_status.in_(["pending", "active"]),
+            ~FixtureTrackingStatus.fixture_id.in_(fixtures_with_odds)  # NON hanno quote
         ).order_by(FixtureTrackingStatus.fixture_date).all()
-        
+
         # Combina: prima le partite giornaliere, poi le altre
         prioritized_fixtures = daily_fixtures + other_fixtures
-        
-        logger.info(f"Found {len(daily_fixtures)} daily fixtures and {len(other_fixtures)} future fixtures")
+
+        logger.info(f"Found {len(prioritized_fixtures)} fixtures needing odds: {len(daily_fixtures)} daily + {len(other_fixtures)} future")
         return [f.fixture_id for f in prioritized_fixtures]
     
     async def get_daily_fixtures_for_tracking(self, db: Session) -> List[int]:

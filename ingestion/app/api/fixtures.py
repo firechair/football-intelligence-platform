@@ -26,6 +26,7 @@ class FixtureResponse(BaseModel):
     fixture_date: datetime
     league_id: Optional[int]
     league_name: str
+    country_name: Optional[str] = None    # 🆕 Paese della lega
     league_logo: Optional[str] = None     # 🆕 Logo lega
     
     # Quote migliori per tutti i mercati
@@ -208,30 +209,49 @@ async def get_fixtures_by_date_range(
     start_date: date = Query(..., description="Start date (YYYY-MM-DD)"),
     end_date: date = Query(..., description="End date (YYYY-MM-DD)"),
     league_id: Optional[int] = Query(None, description="Filter by league ID"),
+    important_only: bool = Query(False, description="Return only important leagues (Serie A, Premier League, etc.)"),
     db: Session = Depends(get_db)
 ):
     """🎯 FIXED con CACHE: Rispetta i parametri start_date e end_date per il range richiesto"""
     
     # 🔴 CACHE: Prova a recuperare dalla cache
-    cache_key = get_fixtures_range_cache_key(
-        start_date.isoformat(), 
-        end_date.isoformat(), 
-        league_id
-    )
+    cache_key = f"fixtures_range_{start_date.isoformat()}_{end_date.isoformat()}_{league_id}_{important_only}"
     cached_response = cache_service.get(cache_key)
     if cached_response:
-        print(f"[OPERATOR] 🎯 Cache HIT for range {start_date} to {end_date}")
+        print(f"[OPERATOR] 🎯 Cache HIT for range {start_date} to {end_date} (important_only={important_only})")
         return FixturesByDateRangeResponse(**cached_response)
-    
-    print(f"[OPERATOR] ❌ Cache MISS - Querying DB for range {start_date} to {end_date}")
-    
+
+    print(f"[OPERATOR] ❌ Cache MISS - Querying DB for range {start_date} to {end_date} (important_only={important_only})")
+
+    # Determina i campionati da includere
+    important_league_ids = []
+    if important_only:
+        # Campionati importanti (stessa logica del backend)
+        important_league_ids = [
+            135, 136, 137, 138,  # Serie A, B, C, D (Italia)
+            39,  # Premier League (Inghilterra)
+            140,  # La Liga (Spagna)
+            78,   # Bundesliga (Germania)
+            61,   # Ligue 1 (Francia)
+            88,   # Eredivisie (Olanda)
+            144,  # Pro League (Belgio)
+            2, 3, # Champions League, Europa League
+            5, 960, 10  # Nations League, Euro Qualifiers, World Cup Qualifiers
+        ]
+        print(f"[OPERATOR] Filtering for {len(important_league_ids)} important leagues")
+
     # Raccogli partite per ogni giorno nel range (solo future)
     daily_fixtures = []
     current_date = start_date
     total_matches = 0
-    
+
     while current_date <= end_date:
-        day_fixtures = await _get_fixtures_by_date(current_date, league_id, db)
+        if important_only:
+            # Per ogni campionato importante, ottieni le partite del giorno
+            day_fixtures = await _get_important_fixtures_by_date(current_date, important_league_ids, db)
+        else:
+            day_fixtures = await _get_fixtures_by_date(current_date, league_id, db)
+
         if day_fixtures.total_matches > 0:
             daily_fixtures.append(day_fixtures)
             total_matches += day_fixtures.total_matches
@@ -373,11 +393,14 @@ async def get_upcoming_fixtures(
 async def _get_fixtures_by_date(target_date: date, league_id: Optional[int], db: Session) -> FixturesByDateResponse:
     """Helper per ottenere partite per una data specifica (solo future e non completate)"""
     try:
-        now = datetime.now()
+        from datetime import timezone
+        # Usa UTC per coerenza con il database
+        now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
         
-        # Se la data target è oggi, filtra solo partite future dalla ora corrente
-        if target_date == now.date():
-            start_datetime = now  # Dalla ora corrente in poi
+        # Se la data target è oggi, mostra TUTTE le partite del giorno (non filtrare per ora)
+        # Il frontend gestirà il filtering per stato (live/scheduled/finished)
+        if target_date == now_utc.date():
+            start_datetime = datetime.combine(target_date, time(0, 0, 0))
             end_datetime = datetime.combine(target_date, time(23, 59, 59))
         else:
             # Per altre date, mostra tutte le partite del giorno
@@ -441,6 +464,59 @@ async def _get_fixtures_by_date(target_date: date, league_id: Optional[int], db:
             matches=[]
         )
 
+async def _get_important_fixtures_by_date(target_date: date, important_league_ids: List[int], db: Session) -> FixturesByDateResponse:
+    """Helper per ottenere partite importanti per una data specifica"""
+    try:
+        from datetime import timezone
+        # Usa UTC per coerenza con il database
+        now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+
+        # Mostra TUTTE le partite del giorno, il frontend gestirà il filtering per stato
+        start_datetime = datetime.combine(target_date, time(0, 0, 0))
+        end_datetime = datetime.combine(target_date, time(23, 59, 59))
+
+        # ✅ FILTRO per campionati importanti E escludi partite completate
+        query = db.query(FixtureTrackingStatus).filter(
+            and_(
+                FixtureTrackingStatus.fixture_date >= start_datetime,
+                FixtureTrackingStatus.fixture_date <= end_datetime,
+                FixtureTrackingStatus.league_id.in_(important_league_ids),
+                FixtureTrackingStatus.tracking_status.in_(["pending", "active"]),
+                FixtureTrackingStatus.tracking_status != "completed"
+            )
+        )
+
+        fixtures = query.order_by(FixtureTrackingStatus.fixture_date).all()
+
+        matches = []
+        successful_count = 0
+        error_count = 0
+
+        for fixture in fixtures:
+            try:
+                fixture_data = await _build_fixture_response(fixture, db)
+                matches.append(fixture_data)
+                successful_count += 1
+            except Exception as e:
+                print(f"Error building fixture response for {fixture.fixture_id}: {str(e)}")
+                error_count += 1
+                continue
+
+        print(f"Processed {len(fixtures)} important fixtures: {successful_count} successful, {error_count} errors")
+
+        return FixturesByDateResponse(
+            date=target_date.isoformat(),
+            total_matches=len(matches),
+            matches=matches
+        )
+    except Exception as e:
+        print(f"Error in _get_important_fixtures_by_date: {str(e)}")
+        return FixturesByDateResponse(
+            date=target_date.isoformat(),
+            total_matches=0,
+            matches=[]
+        )
+
 async def _build_fixture_response(fixture: FixtureTrackingStatus, db: Session) -> FixtureResponse:
     """Helper per costruire risposta fixture completa con quote migliori"""
     
@@ -487,6 +563,7 @@ async def _build_fixture_response(fixture: FixtureTrackingStatus, db: Session) -
         fixture_date=fixture.fixture_date,
         league_id=fixture.league_id,
         league_name=fixture.league_name,
+        country_name=fixture.country_name,  # Paese della lega
         league_logo=league_logo,
         best_odds=best_odds,
         prediction=None  # Non più caricato per performance
