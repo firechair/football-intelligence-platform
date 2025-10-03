@@ -252,13 +252,17 @@ class OddsCollector:
 
                     # Processa e salva le quote nel database usando il metodo avanzato
                     try:
+                        logger.info(f"🔄 Processing odds for fixture {fixture_id}, odds_data keys: {list(fixture_odds.keys()) if fixture_odds else 'None'}")
                         quotes_saved = await self._process_fixture_odds(fixture_id, fixture_odds, db)
                         collection_stats["quotes_collected"] += quotes_saved
                         collection_stats["bookmakers_found"].add("API-Football")  # Placeholder
                         collection_stats["markets_found"].add("1X2")  # Placeholder
                         logger.info(f"✅ Successfully collected {quotes_saved} odds for fixture {fixture_id}")
+                        if quotes_saved == 0:
+                            logger.warning(f"⚠️ No quotes saved for fixture {fixture_id}, check odds_data structure")
                     except Exception as e:
-                        logger.error(f"Error processing odds for fixture {fixture_id}: {str(e)}")
+                        logger.error(f"❌ Error processing odds for fixture {fixture_id}: {str(e)}")
+                        logger.error(f"❌ Odds data structure: {fixture_odds}")
                         collection_stats["errors"].append(f"Error processing fixture {fixture_id}: {str(e)}")
                 else:
                     # Non è un errore se non ci sono quote - molte partite non le hanno ancora
@@ -351,8 +355,10 @@ class OddsCollector:
         minutes_to_kickoff = self._calculate_minutes_to_kickoff(fixture_info.fixture_date)
         
         # Usa la funzione avanzata di estrazione delle quote dal backend
+        logger.info(f"📊 Extracting odds from data structure for fixture {fixture_id}")
         best_odds, all_odds = self.extract_best_1x2_odds_from_any_structure(odds_data)
-        
+        logger.info(f"📊 Extracted best_odds: {best_odds}, all_odds keys: {list(all_odds.keys()) if all_odds else 'None'}")
+
         # Processa tutte le quote estratte
         for outcome_type, bookmaker_odds in all_odds.items():
             if not bookmaker_odds:
@@ -414,8 +420,11 @@ class OddsCollector:
                 quotes_saved += 1
         
         # Commit delle quote salvate
-        db.commit()
-        logger.info(f"Fixture {fixture_id}: salvate {quotes_saved} quote usando estrazione avanzata")
+        if quotes_saved > 0:
+            db.commit()
+            logger.info(f"💾 Fixture {fixture_id}: COMMITTED {quotes_saved} quotes to database")
+        else:
+            logger.warning(f"⚠️ Fixture {fixture_id}: No quotes to commit (quotes_saved=0)")
         return quotes_saved
     
     def _determine_market_type(self, outcome_type: str) -> tuple:
