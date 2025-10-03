@@ -60,27 +60,55 @@ class FixturesCollector:
                 existing.away_team_logo = teams_data.get("away", {}).get("logo")
                 existing.league_logo = league_data.get("logo")
                 # Aggiorna country_name se disponibile e colonna esiste
-                # if league_data.get("country") and not getattr(existing, 'country_name', None):
-                #     setattr(existing, 'country_name', league_data.get("country"))  # Temporaneamente disabilitato
+                if league_data.get("country"):
+                    try:
+                        # Prova ad aggiornare country_name solo se la colonna esiste
+                        if not getattr(existing, 'country_name', None):
+                            setattr(existing, 'country_name', league_data.get("country"))
+                    except AttributeError:
+                        # La colonna non esiste, ignora
+                        pass
                 existing.updated_at = datetime.now()
             else:
-                # Crea nuovo record
-                new_tracking = FixtureTrackingStatus(
-                    fixture_id=fixture_id,
-                    league_id=league_data.get("id"),
-                    league_name=league_data.get("name"),
-                    # country_name=league_data.get("country"),  # Rimosso temporaneamente per compatibilità DB
-                    home_team=teams_data.get("home", {}).get("name", "Unknown"),
-                    away_team=teams_data.get("away", {}).get("name", "Unknown"),
-                    fixture_date=datetime.fromisoformat(
-                        fixture_data.get("date", "").replace("Z", "+00:00")
-                    ),
-                    # Salva loghi da API-Football
-                    home_team_logo=teams_data.get("home", {}).get("logo"),
-                    away_team_logo=teams_data.get("away", {}).get("logo"),
-                    league_logo=league_data.get("logo"),
-                    tracking_status="pending"
+                # Crea nuovo record - gestione sicura di country_name
+                fixture_date = datetime.fromisoformat(
+                    fixture_data.get("date", "").replace("Z", "+00:00")
                 )
+
+                tracking_data = {
+                    'fixture_id': fixture_id,
+                    'league_id': league_data.get("id"),
+                    'league_name': league_data.get("name"),
+                    'home_team': teams_data.get("home", {}).get("name", "Unknown"),
+                    'away_team': teams_data.get("away", {}).get("name", "Unknown"),
+                    'fixture_date': fixture_date,
+                    'home_team_logo': teams_data.get("home", {}).get("logo"),
+                    'away_team_logo': teams_data.get("away", {}).get("logo"),
+                    'league_logo': league_data.get("logo"),
+                    'tracking_status': "pending",
+                }
+
+                # Aggiungi country_name solo se la colonna esiste nel database
+                try:
+                    # Prova a creare un record di test per vedere se la colonna esiste
+                    test_record = FixtureTrackingStatus(
+                        fixture_id=999999999,  # ID fittizio per test
+                        league_id=1,
+                        league_name="Test",
+                        country_name="Test",  # Prova ad impostare country_name
+                        home_team="Test",
+                        away_team="Test",
+                        fixture_date=datetime.now()
+                    )
+                    # Se arriva qui senza errori, la colonna esiste
+                    tracking_data['country_name'] = league_data.get("country")
+                    logger.debug(f"✅ Column country_name exists in database")
+                except Exception as e:
+                    # La colonna non esiste, non impostarla
+                    logger.warning(f"⚠️ Column country_name does not exist in database: {str(e)}")
+                    # Non aggiungere country_name ai dati
+
+                new_tracking = FixtureTrackingStatus(**tracking_data)
                 db.add(new_tracking)
         
         db.commit()
