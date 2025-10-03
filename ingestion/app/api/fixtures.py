@@ -330,11 +330,24 @@ async def get_live_fixtures(
                     print(f"[OPERATOR] ⏰ Skipping fixture {fixture.fixture_id} - starts in {-time_since_start:.0f} min (too early)")
                     continue
                 
-                fixture_data = await _build_fixture_response(fixture, db)
-                live_matches.append(fixture_data)
-                print(f"[OPERATOR] ✅ Added live fixture {fixture.fixture_id} ({fixture.home_team} vs {fixture.away_team}) - time: {time_since_start:.0f} min")
-            except Exception as e:
-                print(f"[OPERATOR] ❌ Error building live fixture {fixture.fixture_id}: {str(e)}")
+        try:
+            fixture_data = await _build_fixture_response(fixture, db)
+            live_matches.append(fixture_data)
+            print(f"[OPERATOR] ✅ Added live fixture {fixture.fixture_id} ({fixture.home_team} vs {fixture.away_team}) - time: {time_since_start:.0f} min")
+        except Exception as e:
+            print(f"[OPERATOR] ❌ Error building fixture {fixture.fixture_id}: {str(e)}")
+            # Se l'errore è relativo a country_name, continua senza quella colonna
+            if "country_name" in str(e):
+                print(f"[OPERATOR] ⚠️ Skipping country_name for fixture {fixture.fixture_id}")
+                try:
+                    # Riprova senza country_name
+                    fixture_data = await _build_fixture_response_no_country(fixture, db)
+                    live_matches.append(fixture_data)
+                    print(f"[OPERATOR] ✅ Added live fixture {fixture.fixture_id} (no country) ({fixture.home_team} vs {fixture.away_team})")
+                except Exception as e2:
+                    print(f"[OPERATOR] ❌ Still failed for fixture {fixture.fixture_id}: {str(e2)}")
+            else:
+                print(f"[OPERATOR] ❌ Other error for fixture {fixture.fixture_id}: {str(e)}")
                 continue
         
         print(f"[OPERATOR] 🎯 Returning {len(live_matches)} REAL live/pre-live matches")
@@ -421,31 +434,43 @@ async def _get_fixtures_by_date(target_date: date, league_id: Optional[int], db:
             query = query.filter(FixtureTrackingStatus.league_id == league_id)
         
         fixtures = query.order_by(FixtureTrackingStatus.fixture_date).all()
-        
+
         matches = []
         successful_count = 0
         error_count = 0
-        
+
         for fixture in fixtures:
             try:
                 fixture_data = await _build_fixture_response(fixture, db)
-                
+
                 # TEMPORANEO: Mostra tutte le partite per testing, anche senza quote
                 # TODO: Ripristinare il filtro quote 1X2 quando il processo di collezione funziona
                 odds = fixture_data.best_odds
                 has_1x2_odds = any(odds.get(market) and len(odds.get(market, {})) > 0 for market in ["1", "X", "2"])
-                
+
                 # Per ora, includi sempre le partite (con o senza quote)
                 matches.append(fixture_data)
                 successful_count += 1
-                
+
                 if not has_1x2_odds:
                     # Log partite senza quote per debug
                     print(f"DEBUG: Fixture {fixture.fixture_id} has no 1X2 odds but included for testing")
             except Exception as e:
                 # Log error but continue with other fixtures
                 print(f"Error building fixture response for {fixture.fixture_id}: {str(e)}")
-                error_count += 1
+                # Se l'errore è relativo a country_name, riprova senza
+                if "country_name" in str(e):
+                    print(f"[OPERATOR] ⚠️ Retrying fixture {fixture.fixture_id} without country_name")
+                    try:
+                        fixture_data = await _build_fixture_response_no_country(fixture, db)
+                        matches.append(fixture_data)
+                        successful_count += 1
+                        print(f"[OPERATOR] ✅ Fixed fixture {fixture.fixture_id} (no country)")
+                    except Exception as e2:
+                        print(f"Error building fixture response (no country) for {fixture.fixture_id}: {str(e2)}")
+                        error_count += 1
+                else:
+                    error_count += 1
                 continue
         
         print(f"Processed {len(fixtures)} fixtures: {successful_count} with 1X2 odds included, {error_count} without odds (filtered out)")
@@ -564,6 +589,45 @@ async def _build_fixture_response(fixture: FixtureTrackingStatus, db: Session) -
         league_id=fixture.league_id,
         league_name=fixture.league_name,
         country_name=fixture.country_name,  # Paese della lega
+        league_logo=league_logo,
+        best_odds=best_odds,
+        prediction=None  # Non più caricato per performance
+    )
+
+async def _build_fixture_response_no_country(fixture: FixtureTrackingStatus, db: Session) -> FixtureResponse:
+    """Helper alternativo per costruire risposta fixture SENZA country_name (per compatibilità db)"""
+
+    # 🆕 Loghi squadre tramite proxy (prima API-Football, poi fallback)
+    home_logo = get_team_logo_url(fixture.home_team, fixture.home_team_logo)
+    away_logo = get_team_logo_url(fixture.away_team, fixture.away_team_logo)
+    league_logo = get_league_logo_url(fixture.league_name, fixture.league_logo)
+
+    # 🆕 Quote migliori - usa lo stesso criterio semplice del backend principale
+    best_odds = {}
+
+    # Prima cerca le quote 1X2 di base
+    for market in ["1", "X", "2"]:
+        try:
+            market_odds = await _get_best_odds_for_market(fixture.fixture_id, market, db)
+            if market_odds:
+                best_odds[market] = market_odds
+        except Exception as e:
+            # Log error but continue with other markets
+            print(f"Error getting odds for fixture {fixture.fixture_id}, market {market}: {str(e)}")
+            continue
+
+    # ⚡ OTTIMIZZAZIONE: Predizioni NON caricate per performance (frontend non le usa)
+
+    return FixtureResponse(
+        fixture_id=fixture.fixture_id,
+        home_team=fixture.home_team,
+        away_team=fixture.away_team,
+        home_team_logo=home_logo,
+        away_team_logo=away_logo,
+        fixture_date=fixture.fixture_date,
+        league_id=fixture.league_id,
+        league_name=fixture.league_name,
+        country_name=None,  # Non disponibile nel db
         league_logo=league_logo,
         best_odds=best_odds,
         prediction=None  # Non più caricato per performance
