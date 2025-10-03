@@ -60,16 +60,16 @@ class FixturesCollector:
                 existing.away_team_logo = teams_data.get("away", {}).get("logo")
                 existing.league_logo = league_data.get("logo")
                 # Aggiorna country_name se disponibile e non già impostato
-                if league_data.get("country") and not existing.country_name:
-                    existing.country_name = league_data.get("country")
+                if league_data.get("country") and not getattr(existing, 'country_name', None):
+                    setattr(existing, 'country_name', league_data.get("country"))
                 existing.updated_at = datetime.now()
             else:
                 # Crea nuovo record
                 new_tracking = FixtureTrackingStatus(
                     fixture_id=fixture_id,
                     league_id=league_data.get("id"),
-                    league_name=league_data.get("name"),
-                    country_name=league_data.get("country"),  # Paese della lega
+                    league_name=league_data.get("name"))
+                    # country_name=league_data.get("country"),  # TEMPORANEAMENTE COMMENTATO
                     home_team=teams_data.get("home", {}).get("name", "Unknown"),
                     away_team=teams_data.get("away", {}).get("name", "Unknown"),
                     fixture_date=datetime.fromisoformat(
