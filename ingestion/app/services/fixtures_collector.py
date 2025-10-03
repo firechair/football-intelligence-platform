@@ -59,9 +59,9 @@ class FixturesCollector:
                 existing.home_team_logo = teams_data.get("home", {}).get("logo")
                 existing.away_team_logo = teams_data.get("away", {}).get("logo")
                 existing.league_logo = league_data.get("logo")
-                # Aggiorna country_name se disponibile e non già impostato
-                if league_data.get("country") and not getattr(existing, 'country_name', None):
-                    setattr(existing, 'country_name', league_data.get("country"))
+                # Aggiorna country_name se disponibile e colonna esiste
+                # if league_data.get("country") and not getattr(existing, 'country_name', None):
+                #     setattr(existing, 'country_name', league_data.get("country"))  # Temporaneamente disabilitato
                 existing.updated_at = datetime.now()
             else:
                 # Crea nuovo record
@@ -69,7 +69,7 @@ class FixturesCollector:
                     fixture_id=fixture_id,
                     league_id=league_data.get("id"),
                     league_name=league_data.get("name"),
-                    country_name=league_data.get("country"),
+                    # country_name=league_data.get("country"),  # Rimosso temporaneamente per compatibilità DB
                     home_team=teams_data.get("home", {}).get("name", "Unknown"),
                     away_team=teams_data.get("away", {}).get("name", "Unknown"),
                     fixture_date=datetime.fromisoformat(

@@ -419,12 +419,18 @@ class OddsCollector:
                 
                 quotes_saved += 1
         
-        # Commit delle quote salvate
-        if quotes_saved > 0:
+        # Commit delle quote salvate (sempre, anche se 0 per evitare problemi di transazione)
+        try:
             db.commit()
-            logger.info(f"💾 Fixture {fixture_id}: COMMITTED {quotes_saved} quotes to database")
-        else:
-            logger.warning(f"⚠️ Fixture {fixture_id}: No quotes to commit (quotes_saved=0)")
+            if quotes_saved > 0:
+                logger.info(f"💾 Fixture {fixture_id}: COMMITTED {quotes_saved} quotes to database")
+            else:
+                logger.debug(f"ℹ️ Fixture {fixture_id}: No new quotes saved (quotes_saved=0)")
+        except Exception as commit_error:
+            logger.error(f"❌ Error committing odds for fixture {fixture_id}: {str(commit_error)}")
+            db.rollback()
+            raise commit_error
+
         return quotes_saved
     
     def _determine_market_type(self, outcome_type: str) -> tuple:
