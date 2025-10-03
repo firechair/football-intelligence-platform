@@ -31,6 +31,11 @@ class OddsTrackingScheduler:
         logger.info("📅 Fixtures → 🔮 Predictions → 🎯 Odds → 🔄 Future → Repeat")
         
         try:
+            # 🔥 EMERGENCY FIX: Prima esecuzione immediata per popolare database vuoto
+            logger.info("🔥 EMERGENCY: Collecting fixtures immediately on startup...")
+            await self._process_daily_fixtures()
+            logger.info("🔥 EMERGENCY: Fixtures collected, continuing normal flow...")
+
             while self.running:
                 # 1. FIXTURES GIORNALIERE (1x/giorno)
                 await self._process_daily_fixtures()
