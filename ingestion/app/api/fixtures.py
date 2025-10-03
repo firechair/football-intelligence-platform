@@ -396,7 +396,7 @@ async def _get_fixtures_by_date(target_date: date, league_id: Optional[int], db:
         from datetime import timezone
         # Usa UTC per coerenza con il database
         now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
-        
+
         # Se la data target è oggi, mostra TUTTE le partite del giorno (non filtrare per ora)
         # Il frontend gestirà il filtering per stato (live/scheduled/finished)
         if target_date == now_utc.date():
@@ -406,7 +406,7 @@ async def _get_fixtures_by_date(target_date: date, league_id: Optional[int], db:
             # Per altre date, mostra tutte le partite del giorno
             start_datetime = datetime.combine(target_date, time(0, 0, 0))
             end_datetime = datetime.combine(target_date, time(23, 59, 59))
-        
+
         # ✅ FILTRO MIGLIORATO: Escludi esplicitamente le partite "completed"
         query = db.query(FixtureTrackingStatus).filter(
             and_(
@@ -416,11 +416,39 @@ async def _get_fixtures_by_date(target_date: date, league_id: Optional[int], db:
                 FixtureTrackingStatus.tracking_status != "completed"  # Escludi completate
             )
         )
-        
+
         if league_id:
             query = query.filter(FixtureTrackingStatus.league_id == league_id)
-        
+
         fixtures = query.order_by(FixtureTrackingStatus.fixture_date).all()
+
+        # 🚀 OTTIMIZZAZIONE: Recupera TUTTE le quote per TUTTE le partite in una sola query
+        fixture_ids = [f.fixture_id for f in fixtures]
+        all_odds = {}
+
+        if fixture_ids:
+            # Query unica per recuperare tutte le quote più recenti per tutti i fixture
+            from sqlalchemy import desc
+            odds_query = db.query(ExtendedOddsHistory).filter(
+                and_(
+                    ExtendedOddsHistory.fixture_id.in_(fixture_ids),
+                    ExtendedOddsHistory.market_name.in_(["1", "X", "2"])  # Solo mercati principali per performance
+                )
+            ).order_by(ExtendedOddsHistory.fixture_id, desc(ExtendedOddsHistory.collected_at))
+
+            odds_results = odds_query.all()
+
+            # Raggruppa le quote per fixture_id e market
+            for odd in odds_results:
+                if odd.fixture_id not in all_odds:
+                    all_odds[odd.fixture_id] = {}
+
+                if odd.market_name not in all_odds[odd.fixture_id]:
+                    all_odds[odd.fixture_id][odd.market_name] = {}
+
+                # Prendi solo la quota più recente per ogni bookmaker per ogni mercato
+                if odd.bookmaker_name not in all_odds[odd.fixture_id][odd.market_name]:
+                    all_odds[odd.fixture_id][odd.market_name][odd.bookmaker_name] = float(odd.odd_value)
 
         matches = []
         successful_count = 0
@@ -428,7 +456,10 @@ async def _get_fixtures_by_date(target_date: date, league_id: Optional[int], db:
 
         for fixture in fixtures:
             try:
-                fixture_data = await _build_fixture_response(fixture, db)
+                # 🚀 USA LE QUOTE PRECARICATE invece di chiamare _get_best_odds_for_market
+                fixture_odds = all_odds.get(fixture.fixture_id, {})
+
+                fixture_data = await _build_fixture_response_optimized(fixture, fixture_odds, db)
 
                 # TEMPORANEO: Mostra tutte le partite per testing, anche senza quote
                 # TODO: Ripristinare il filtro quote 1X2 quando il processo di collezione funziona
@@ -447,9 +478,9 @@ async def _get_fixtures_by_date(target_date: date, league_id: Optional[int], db:
                 print(f"Error building fixture response for {fixture.fixture_id}: {str(e)}")
                 error_count += 1
                 continue
-        
+
         print(f"Processed {len(fixtures)} fixtures: {successful_count} with 1X2 odds included, {error_count} without odds (filtered out)")
-        
+
         return FixturesByDateResponse(
             date=target_date.isoformat(),
             total_matches=len(matches),
@@ -516,6 +547,32 @@ async def _get_important_fixtures_by_date(target_date: date, important_league_id
             total_matches=0,
             matches=[]
         )
+
+async def _build_fixture_response_optimized(fixture: FixtureTrackingStatus, preloaded_odds: Dict[str, Dict[str, float]], db: Session) -> FixtureResponse:
+    """Helper ottimizzato per costruire risposta fixture con quote pre-caricate"""
+
+    # 🆕 Loghi squadre tramite proxy (prima API-Football, poi fallback)
+    home_logo = get_team_logo_url(fixture.home_team, fixture.home_team_logo)
+    away_logo = get_team_logo_url(fixture.away_team, fixture.away_team_logo)
+    league_logo = get_league_logo_url(fixture.league_name, fixture.league_logo)
+
+    # 🚀 USA LE QUOTE PRECARICATE invece di query database
+    best_odds = preloaded_odds
+
+    return FixtureResponse(
+        fixture_id=fixture.fixture_id,
+        home_team=fixture.home_team,
+        away_team=fixture.away_team,
+        home_team_logo=home_logo,
+        away_team_logo=away_logo,
+        fixture_date=fixture.fixture_date,
+        league_id=fixture.league_id,
+        league_name=fixture.league_name,
+        country_name=getattr(fixture, 'country_name', None),  # Paese della lega
+        league_logo=league_logo,
+        best_odds=best_odds,
+        prediction=None  # Non caricato per performance
+    )
 
 async def _build_fixture_response(fixture: FixtureTrackingStatus, db: Session) -> FixtureResponse:
     """Helper per costruire risposta fixture completa con quote migliori"""
