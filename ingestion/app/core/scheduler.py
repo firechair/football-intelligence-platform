@@ -150,21 +150,21 @@ class OddsTrackingScheduler:
             db.close()
     
     async def _process_daily_odds(self):
-        """🎯 PROCESSA QUOTE GIORNALIERE (dopo predizioni)"""
-        logger.info("🎯 Processing DAILY odds for today's fixtures")
-        
+        """🎯 PROCESSA QUOTE GIORNALIERE (tracking continuo per andamento nel tempo)"""
+        logger.info("🎯 Processing DAILY odds for continuous tracking")
+
         db = next(get_db())
         try:
-            # Raccogli quote SOLO per partite giornaliere che hanno predizioni
+            # Raccogli quote per TUTTE le partite giornaliere per tracking CONTINUO
             fixture_ids = await fixtures_collector.get_daily_fixtures_for_tracking(db)
-            
+
             if fixture_ids:
-                limited_fixtures = fixture_ids[:100]  # Limita per performance
-                stats = await odds_collector.collect_odds_for_fixtures(limited_fixtures, db)
-                logger.info(f"🎯 Daily odds collected: {stats}")
+                # Non limitiamo più - vogliamo tracking completo per vedere andamento
+                stats = await odds_collector.collect_odds_for_fixtures(fixture_ids, db)
+                logger.info(f"🎯 Daily odds collected (continuous tracking): {stats}")
             else:
-                logger.info("🎯 No daily fixtures needing odds collection")
-            
+                logger.info("🎯 No daily fixtures for odds tracking")
+
         finally:
             db.close()
     
@@ -216,18 +216,18 @@ class OddsTrackingScheduler:
             db.close()
     
     async def _process_future_odds(self):
-        """🎯 PROCESSA QUOTE FUTURE (limitato, non continuo)"""
-        logger.info("🎯 Processing FUTURE odds (limited batch)")
-        
+        """🎯 PROCESSA QUOTE FUTURE (tracking continuo per andamento nel tempo)"""
+        logger.info("🎯 Processing FUTURE odds (continuous tracking)")
+
         db = next(get_db())
         try:
-            # Raccogli quote per future fixtures (max 50 alla volta)
+            # Raccogli quote per TUTTE le future fixtures (non limitato, per storico completo)
             fixture_ids = await fixtures_collector.get_active_fixtures_for_tracking(db)
             if fixture_ids:
-                limited_fixtures = fixture_ids[:50]  # Molto limitato per future
-                stats = await odds_collector.collect_odds_for_fixtures(limited_fixtures, db)
-                logger.info(f"🎯 Future odds collected: {stats}")
-            
+                # Non limitiamo più - vogliamo tracking completo per vedere andamento
+                stats = await odds_collector.collect_odds_for_fixtures(fixture_ids, db)
+                logger.info(f"🎯 Future odds collected (continuous tracking): {stats}")
+
         finally:
             db.close()
     

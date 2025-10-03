@@ -262,7 +262,8 @@ class OddsCollector:
                         collection_stats["errors"].append(f"Error processing fixture {fixture_id}: {str(e)}")
                 else:
                     # Non è un errore se non ci sono quote - molte partite non le hanno ancora
-                    logger.debug(f"ℹ️ No odds available yet for fixture {fixture_id} (normal for distant matches)")
+                    # Questo è NORMALE per partite distanti nel tempo o campionati minori
+                    logger.info(f"ℹ️ No odds available for fixture {fixture_id} (continuing with others)")
                     collection_stats["fixtures_processed"] += 1
                 
                 # Rate limiting: massimo 2 chiamate/secondo
