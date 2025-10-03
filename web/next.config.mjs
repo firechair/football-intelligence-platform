@@ -16,12 +16,37 @@ const nextConfig = {
   
   // Image optimization
   images: {
-    domains: [
-      'media.api-sports.io',
-      'upload.wikimedia.org',
-      'www.thesportsdb.com',
-      'crests.football-data.org',
-      'flagcdn.com'
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'media.api-sports.io',
+      },
+      {
+        protocol: 'https',
+        hostname: 'upload.wikimedia.org',
+      },
+      {
+        protocol: 'https',
+        hostname: 'www.thesportsdb.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'crests.football-data.org',
+      },
+      {
+        protocol: 'https',
+        hostname: 'flagcdn.com',
+      },
+      {
+        protocol: 'http',
+        hostname: 'localhost',
+        port: '8000',
+      },
+      {
+        protocol: 'http',
+        hostname: 'localhost',
+        port: '9000',
+      }
     ],
     formats: ['image/webp', 'image/avif'],
   },
@@ -33,7 +58,28 @@ const nextConfig = {
       ? 'http://localhost:8000'
       : (process.env.NEXT_PUBLIC_BACKEND_URL || 'https://example.invalid');
     
+    // Use local operator in development, production URL in production
+    const operatorUrl = process.env.NODE_ENV === 'development'
+      ? 'http://localhost:8001'
+      : (process.env.NEXT_PUBLIC_OPERATOR_URL || 'https://example.invalid');
+    
     return [
+      // Operator API routes (must come before general /api routes)
+      {
+        source: '/api/v1/:path*',
+        destination: `${operatorUrl}/api/v1/:path*`,
+      },
+      // Legacy operator assets route (for backward compatibility)
+      {
+        source: '/api/assets/:path*',
+        destination: `${operatorUrl}/api/v1/assets/:path*`,
+      },
+      // Odds history routes - route to backend
+      {
+        source: '/api/odds-history/:path*',
+        destination: `${backendUrl}/api/odds-history/:path*`,
+      },
+      // Backend API routes
       {
         source: '/api/:path*',
         destination: `${backendUrl}/api/:path*`,
