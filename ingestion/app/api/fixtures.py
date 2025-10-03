@@ -397,13 +397,14 @@ async def _get_fixtures_by_date(target_date: date, league_id: Optional[int], db:
         # Usa UTC per coerenza con il database
         now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
 
-        # Se la data target è oggi, mostra TUTTE le partite del giorno (non filtrare per ora)
-        # Il frontend gestirà il filtering per stato (live/scheduled/finished)
+        # Filtra le partite finite più di 1 ora fa per tutti i giorni
+        # Questo è coerente con il frontend che marca come "Finished" le partite > 1 ora fa
         if target_date == now_utc.date():
-            start_datetime = datetime.combine(target_date, time(0, 0, 0))
+            # Per oggi: solo partite future (iniziate max 1 ora fa) o non ancora iniziate
+            start_datetime = now_utc - timedelta(hours=1)  # Include partite iniziate max 1 ora fa
             end_datetime = datetime.combine(target_date, time(23, 59, 59))
         else:
-            # Per altre date, mostra tutte le partite del giorno
+            # Per altri giorni: tutte le partite del giorno (il frontend filtrerà quelle finite)
             start_datetime = datetime.combine(target_date, time(0, 0, 0))
             end_datetime = datetime.combine(target_date, time(23, 59, 59))
 
@@ -507,9 +508,15 @@ async def _get_important_fixtures_by_date(target_date: date, important_league_id
         # Usa UTC per coerenza con il database
         now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
 
-        # Mostra TUTTE le partite del giorno, il frontend gestirà il filtering per stato
-        start_datetime = datetime.combine(target_date, time(0, 0, 0))
-        end_datetime = datetime.combine(target_date, time(23, 59, 59))
+        # Filtra le partite finite più di 1 ora fa per oggi
+        if target_date == now_utc.date():
+            # Per oggi: solo partite future (iniziate max 1 ora fa) o non ancora iniziate
+            start_datetime = now_utc - timedelta(hours=1)
+            end_datetime = datetime.combine(target_date, time(23, 59, 59))
+        else:
+            # Per altri giorni: tutte le partite del giorno
+            start_datetime = datetime.combine(target_date, time(0, 0, 0))
+            end_datetime = datetime.combine(target_date, time(23, 59, 59))
 
         # ✅ FILTRO per campionati importanti E escludi partite completate
         query = db.query(FixtureTrackingStatus).filter(
