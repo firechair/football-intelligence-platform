@@ -438,17 +438,22 @@ async def _get_fixtures_by_date(target_date: date, league_id: Optional[int], db:
 
             odds_results = odds_query.all()
 
-            # Raggruppa le quote per fixture_id e market
+            # Raggruppa le quote per fixture_id e market - prendi la quota più recente per ogni bookmaker
+            odds_dict = {}
             for odd in odds_results:
+                key = (odd.fixture_id, odd.market_name, odd.bookmaker_name)
+                if key not in odds_dict or odds_dict[key].collected_at < odd.collected_at:
+                    odds_dict[key] = odd
+
+            # Costruisci il dizionario finale delle quote
+            for odd in odds_dict.values():
                 if odd.fixture_id not in all_odds:
                     all_odds[odd.fixture_id] = {}
 
                 if odd.market_name not in all_odds[odd.fixture_id]:
                     all_odds[odd.fixture_id][odd.market_name] = {}
 
-                # Prendi solo la quota più recente per ogni bookmaker per ogni mercato
-                if odd.bookmaker_name not in all_odds[odd.fixture_id][odd.market_name]:
-                    all_odds[odd.fixture_id][odd.market_name][odd.bookmaker_name] = float(odd.odd_value)
+                all_odds[odd.fixture_id][odd.market_name][odd.bookmaker_name] = float(odd.odd_value)
 
         matches = []
         successful_count = 0
