@@ -69,7 +69,7 @@ class FixturesCollector:
                     fixture_id=fixture_id,
                     league_id=league_data.get("id"),
                     league_name=league_data.get("name"),
-                    # country_name=league_data.get("country"),  # TEMPORANEAMENTE COMMENTATO
+                    country_name=league_data.get("country"),
                     home_team=teams_data.get("home", {}).get("name", "Unknown"),
                     away_team=teams_data.get("away", {}).get("name", "Unknown"),
                     fixture_date=datetime.fromisoformat(
