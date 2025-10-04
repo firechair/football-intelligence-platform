@@ -409,10 +409,9 @@ async def get_live_fixtures(
 
                     continue
 
-                # ✅ Se la partita inizia tra più di 5 minuti, non è ancora live
-                if time_since_start < -5:
-                    print(f"[OPERATOR] ⏰ Skipping fixture {fixture.fixture_id} - starts in {-time_since_start:.0f} min (too early)")
-                    continue
+                # ✅ Per LIVE: includi tutte le partite di oggi (anche future)
+                # Non applicare limiti temporali stretti - l'utente vuole vedere tutte le partite programmate per oggi
+                # Il frontend filtrerà quelle già finite se necessario
 
                 fixture_data = await _build_fixture_response(fixture, db)
                 live_matches.append(fixture_data)
