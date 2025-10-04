@@ -275,6 +275,7 @@ async def get_fixtures_by_date_range(
 @router.get("/live", response_model=List[FixtureResponse])
 async def get_live_fixtures(
     limit: int = Query(50, ge=1, le=100, description="Max live fixtures to return"),
+    force_refresh: bool = Query(False, description="Force cache refresh"),
     db: Session = Depends(get_db)
 ):
     """🔴 Partite LIVE e RECENTI con CACHE (3s) - partite negli ultimi 4h + prossime"""
@@ -282,9 +283,11 @@ async def get_live_fixtures(
     # 🔴 CACHE: Prova a recuperare dalla cache (TTL 3s per live)
     cache_key = get_live_fixtures_cache_key()
     cached_response = cache_service.get(cache_key)
-    if cached_response:
+    if cached_response and not force_refresh:
         print(f"[OPERATOR] 🎯 Cache HIT for live fixtures")
         return cached_response
+    elif force_refresh:
+        print(f"[OPERATOR] 🔄 Force refresh requested - bypassing cache")
     
     print(f"[OPERATOR] ❌ Cache MISS - Querying DB for live fixtures")
     
