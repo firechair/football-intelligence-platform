@@ -287,19 +287,19 @@ async def get_live_fixtures_debug(
         # Test 2: Count fixtures for today
         now = datetime.now()
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        tomorrow_start = today_start + timedelta(days=1)
+        today_end = today_start.replace(hour=23, minute=59, second=59)
 
         today_count = db.query(FixtureTrackingStatus).filter(
             and_(
                 FixtureTrackingStatus.fixture_date >= today_start,
-                FixtureTrackingStatus.fixture_date <= tomorrow_start
+                FixtureTrackingStatus.fixture_date <= today_end
             )
         ).count()
         debug_info["fixtures_for_today"] = today_count
 
         # Test 3: Same filters as live endpoint
         start_time = today_start
-        end_time = tomorrow_start
+        end_time = today_end
 
         query = db.query(FixtureTrackingStatus).filter(
             and_(
@@ -360,51 +360,27 @@ async def get_live_fixtures(
     try:
         now = datetime.now()
         
-        # ✅ FILTRO IDENTICO AL RANGE: Tutte le partite di oggi
+        # ✅ FILTRO CORRETTO: Solo partite di oggi (non domani)
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)  # Inizio giornata corrente
-        tomorrow_start = today_start + timedelta(days=1)  # Inizio giornata successiva
-        start_time = today_start  # Inizio giornata (come range endpoint)
-        end_time = tomorrow_start  # Fine giornata (come range endpoint)
+        today_end = today_start.replace(hour=23, minute=59, second=59)  # Fine giornata corrente
+        start_time = today_start
+        end_time = today_end
 
         print(f"[OPERATOR] Live fixtures query: {start_time.strftime('%H:%M:%S')} <= fixture_date <= {end_time.strftime('%H:%M:%S')}")
 
-        # ✅ DEBUG: Test different queries to isolate the issue
-        print(f"[DEBUG LIVE] Testing different queries...")
-
-        # Test 1: Count all fixtures in table
-        total_count = db.query(FixtureTrackingStatus).count()
-        print(f"[DEBUG LIVE] Total fixtures in table: {total_count}")
-
-        # Test 2: Count fixtures for today (same logic as range endpoint)
-        today_start_for_test = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-        tomorrow_start_for_test = today_start_for_test + timedelta(days=1)
-        today_count = db.query(FixtureTrackingStatus).filter(
-            and_(
-                FixtureTrackingStatus.fixture_date >= today_start_for_test,
-                FixtureTrackingStatus.fixture_date <= tomorrow_start_for_test
-            )
-        ).count()
-        print(f"[DEBUG LIVE] Fixtures for today (range logic): {today_count}")
-
-        # Test 3: Same as current live query but with debug
+        # ✅ FILTRI ORIGINALI: Status validi per partite live
         query = db.query(FixtureTrackingStatus).filter(
             and_(
                 FixtureTrackingStatus.fixture_date >= start_time,
-                FixtureTrackingStatus.fixture_date <= end_time
+                FixtureTrackingStatus.fixture_date <= end_time,
+                FixtureTrackingStatus.tracking_status.in_(["active", "live", "pending"]),
+                FixtureTrackingStatus.tracking_status != "completed"
             )
         )
 
-        # Debug the actual query
-        print(f"[DEBUG LIVE] start_time: {start_time}")
-        print(f"[DEBUG LIVE] end_time: {end_time}")
-        print(f"[DEBUG LIVE] now: {datetime.now()}")
-
         fixtures = query.order_by(FixtureTrackingStatus.fixture_date.desc()).limit(limit).all()
-        print(f"[DEBUG LIVE] Query result: {len(fixtures)} fixtures")
 
-        # Debug first few fixtures if any
-        for i, f in enumerate(fixtures[:3]):
-            print(f"[DEBUG LIVE] Fixture {i}: id={f.fixture_id}, date={f.fixture_date}, status={f.tracking_status}")
+        print(f"[OPERATOR] Found {len(fixtures)} potential live fixtures in database")
         for f in fixtures[:5]:  # Log first 5 fixtures
             time_diff = (now - f.fixture_date).total_seconds() / 60
             print(f"[OPERATOR] Fixture {f.fixture_id}: {f.fixture_date} ({time_diff:.0f} min ago, status: {f.tracking_status})")
