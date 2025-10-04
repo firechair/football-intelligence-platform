@@ -294,13 +294,13 @@ async def get_live_fixtures(
     try:
         now = datetime.now()
         
-        # ✅ FILTRO ULTRA-STRETTO: Solo partite ATTUALMENTE IN CORSO
-        # 1. SOLO partite iniziate negli ultimi 5 minuti (partite realmente live)
-        # 2. SOLO partite che iniziano nei prossimi 5 minuti (pre-live immediato)
+        # ✅ FILTRO REALISTICO: Partite LIVE reali
+        # 1. Partite iniziate negli ultimi 90 minuti (partite in corso - durata calcio)
+        # 2. Partite che iniziano nelle prossime 3 ore (partite programmate oggi)
         # 3. ESCLUDI TUTTE le partite di giorni precedenti
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)  # Inizio giornata corrente
-        start_time = max(today_start, now - timedelta(minutes=5))  # Solo ultime 5 minuti!
-        end_time = now + timedelta(minutes=5)  # Solo prossimi 5 minuti!
+        start_time = max(today_start, now - timedelta(minutes=90))  # Ultime 90 minuti (partite in corso)
+        end_time = now + timedelta(hours=3)  # Prossime 3 ore (partite di oggi)
 
         print(f"[OPERATOR] Live fixtures query: {start_time.strftime('%H:%M:%S')} <= fixture_date <= {end_time.strftime('%H:%M:%S')}")
 
@@ -329,11 +329,22 @@ async def get_live_fixtures(
                 match_time = fixture.fixture_date
                 time_since_start = (now - match_time).total_seconds() / 60  # minuti
 
-                # ✅ AGGIORNAMENTO AUTOMATICO: Se la partita è iniziata più di 10 minuti fa, marca come completata
-                if time_since_start > 10:  # 10 minuti (partite molto brevi o già finite)
+                # ✅ AGGIORNAMENTO AUTOMATICO: Se la partita è iniziata più di 120 minuti fa, marca come completata
+                if time_since_start > 120:  # 120 minuti (durata massima partita calcio + extra time)
                     print(f"[OPERATOR] ⚠️ Marking fixture {fixture.fixture_id} as completed - started {time_since_start:.0f} min ago")
                     fixture.tracking_status = "completed"
+                    fixture.updated_at = now
                     db.commit()
+
+                    # 🚨 INVALIDA CACHE: Forza refresh della cache live fixtures
+                    try:
+                        from app.services.cache_service import get_live_fixtures_cache_key
+                        cache_key = get_live_fixtures_cache_key()
+                        cache_service.delete(cache_key)
+                        print(f"[OPERATOR] 🗑️ Invalidated live fixtures cache after marking {fixture.fixture_id} as completed")
+                    except Exception as e:
+                        print(f"[OPERATOR] ❌ Error invalidating cache for fixture {fixture.fixture_id}: {str(e)}")
+
                     continue
 
                 # ✅ Se la partita inizia tra più di 5 minuti, non è ancora live
