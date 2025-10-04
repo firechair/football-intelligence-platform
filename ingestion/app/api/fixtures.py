@@ -278,7 +278,7 @@ async def get_live_fixtures(
     force_refresh: bool = Query(False, description="Force cache refresh"),
     db: Session = Depends(get_db)
 ):
-    """🔴 Partite LIVE e RECENTI con CACHE (3s) - partite negli ultimi 4h + prossime"""
+    """🔴 Partite REALMENTE LIVE - solo partite attualmente in corso (iniziate da max 5 min, non finite)"""
 
     # 🔴 CACHE: Import necessario per cache
     from app.services.cache_service import get_live_fixtures_cache_key
@@ -291,33 +291,32 @@ async def get_live_fixtures(
         return cached_response
     elif force_refresh:
         print(f"[OPERATOR] 🔄 Force refresh requested - bypassing cache")
-    
-    print(f"[OPERATOR] ❌ Cache MISS - Querying DB for live fixtures")
-    
+
+    print(f"[OPERATOR] ❌ Cache MISS - Querying DB for TRULY live fixtures")
+
     try:
         now = datetime.now()
-        
-        # ✅ FILTRO CORRETTO: Solo partite di oggi (non domani)
-        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)  # Inizio giornata corrente
-        today_end = today_start.replace(hour=23, minute=59, second=59)  # Fine giornata corrente
-        start_time = today_start
-        end_time = today_end
 
-        print(f"[OPERATOR] Live fixtures query: {start_time.strftime('%H:%M:%S')} <= fixture_date <= {end_time.strftime('%H:%M:%S')}")
+        # ✅ FILTRO REALMENTE LIVE: Solo partite iniziate da max 5 minuti e non ancora finite (max 120 min)
+        # Questo significa partite che sono iniziate tra 5 minuti fa e 120 minuti fa
+        live_start_cutoff = now - timedelta(minutes=120)  # Max 120 minuti fa (partite non ancora finite)
+        live_end_cutoff = now - timedelta(minutes=-5)     # Max 5 minuti nel futuro (partite già iniziate)
 
-        # ✅ FILTRI ORIGINALI: Status validi per partite live
+        print(f"[OPERATOR] Live fixtures query: {live_start_cutoff.strftime('%H:%M:%S')} <= fixture_date <= {live_end_cutoff.strftime('%H:%M:%S')}")
+
+        # ✅ FILTRI STRETTI: Solo partite davvero live
         query = db.query(FixtureTrackingStatus).filter(
             and_(
-                FixtureTrackingStatus.fixture_date >= start_time,
-                FixtureTrackingStatus.fixture_date <= end_time,
-                FixtureTrackingStatus.tracking_status.in_(["active", "live", "pending"]),
+                FixtureTrackingStatus.fixture_date >= live_start_cutoff,  # Iniziate max 120 min fa
+                FixtureTrackingStatus.fixture_date <= live_end_cutoff,    # Non future oltre 5 min
+                FixtureTrackingStatus.tracking_status.in_(["active", "live"]),
                 FixtureTrackingStatus.tracking_status != "completed"
             )
         )
 
         fixtures = query.order_by(FixtureTrackingStatus.fixture_date.desc()).limit(limit).all()
 
-        print(f"[OPERATOR] Found {len(fixtures)} potential live fixtures in database")
+        print(f"[OPERATOR] Found {len(fixtures)} TRULY live fixtures in database")
         for f in fixtures[:5]:  # Log first 5 fixtures
             time_diff = (now - f.fixture_date).total_seconds() / 60
             print(f"[OPERATOR] Fixture {f.fixture_id}: {f.fixture_date} ({time_diff:.0f} min ago, status: {f.tracking_status})")
@@ -325,46 +324,36 @@ async def get_live_fixtures(
         live_matches = []
         for fixture in fixtures:
             try:
-                # Verifica se la partita è veramente live o dovrebbe essere finita
+                # Verifica finale se la partita è ancora valida come live
                 match_time = fixture.fixture_date
                 time_since_start = (now - match_time).total_seconds() / 60  # minuti
 
-                # ✅ AGGIORNAMENTO AUTOMATICO: Se la partita è iniziata più di 120 minuti fa, marca come completata
-                if time_since_start > 120:  # 120 minuti (durata massima partita calcio + extra time)
-                    print(f"[OPERATOR] ⚠️ Marking fixture {fixture.fixture_id} as completed - started {time_since_start:.0f} min ago")
+                # Controllo finale: deve essere iniziata (max 5 min fa) e non finita (max 120 min fa)
+                if time_since_start < -5:  # Troppo futura
+                    print(f"[OPERATOR] ⚠️ Skipping fixture {fixture.fixture_id} - too future ({time_since_start:.0f} min)")
+                    continue
+                elif time_since_start > 120:  # Troppo vecchia (probabilmente finita)
+                    print(f"[OPERATOR] ⚠️ Marking fixture {fixture.fixture_id} as completed - too old ({time_since_start:.0f} min)")
                     fixture.tracking_status = "completed"
                     fixture.updated_at = now
                     db.commit()
-
-                    # 🚨 INVALIDA CACHE: Forza refresh della cache live fixtures
-                    try:
-                        cache_key_to_delete = get_live_fixtures_cache_key()
-                        cache_service.delete(cache_key_to_delete)
-                        print(f"[OPERATOR] 🗑️ Invalidated live fixtures cache after marking {fixture.fixture_id} as completed")
-                    except Exception as e:
-                        print(f"[OPERATOR] ❌ Error invalidating cache for fixture {fixture.fixture_id}: {str(e)}")
-
                     continue
-
-                # ✅ Per LIVE: includi tutte le partite di oggi (anche future)
-                # Non applicare limiti temporali stretti - l'utente vuole vedere tutte le partite programmate per oggi
-                # Il frontend filtrerà quelle già finite se necessario
 
                 fixture_data = await _build_fixture_response(fixture, db)
                 live_matches.append(fixture_data)
-                print(f"[OPERATOR] ✅ Added live fixture {fixture.fixture_id} ({fixture.home_team} vs {fixture.away_team}) - time: {time_since_start:.0f} min")
+                print(f"[OPERATOR] ✅ Added TRULY live fixture {fixture.fixture_id} ({fixture.home_team} vs {fixture.away_team}) - started {time_since_start:.0f} min ago")
             except Exception as e:
                 print(f"[OPERATOR] ❌ Error building live fixture {fixture.fixture_id}: {str(e)}")
                 continue
-        
-        print(f"[OPERATOR] 🎯 Returning {len(live_matches)} REAL live/pre-live matches")
-        
+
+        print(f"[OPERATOR] 🎯 Returning {len(live_matches)} TRULY live matches (started within last 120 min, not older than 5 min ago)")
+
         # 🔴 CACHE: Salva in cache per 3 secondi (ridotto da 5s per aggiornamenti più frequenti)
         cache_service.set(cache_key, live_matches, ttl_seconds=3)
-        print(f"[OPERATOR] 💾 Cached {len(live_matches)} live fixtures (3s TTL)")
-        
+        print(f"[OPERATOR] 💾 Cached {len(live_matches)} truly live fixtures (3s TTL)")
+
         return live_matches
-        
+
     except Exception as e:
         print(f"[OPERATOR] ❌ Error in get_live_fixtures: {str(e)}")
         return []
