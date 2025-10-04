@@ -305,14 +305,13 @@ async def get_live_fixtures(
 
         print(f"[OPERATOR] Live fixtures query: {start_time.strftime('%H:%M:%S')} <= fixture_date <= {end_time.strftime('%H:%M:%S')}")
 
-        # ✅ ESCLUDI ESPLICITAMENTE LE PARTITE COMPLETATE + SOLO PARTITE DI OGGI
+        # ✅ FILTRO IDENTICO AL RANGE ENDPOINT
         query = db.query(FixtureTrackingStatus).filter(
             and_(
                 FixtureTrackingStatus.fixture_date >= start_time,
                 FixtureTrackingStatus.fixture_date <= end_time,
-                FixtureTrackingStatus.fixture_date >= today_start,  # ✅ SOLO PARTITE DI OGGI
                 FixtureTrackingStatus.tracking_status.in_(["active", "live", "pending"]),
-                FixtureTrackingStatus.tracking_status != "completed"  # ✅ ESCLUDI COMPLETATE
+                FixtureTrackingStatus.tracking_status != "completed"
             )
         )
 
