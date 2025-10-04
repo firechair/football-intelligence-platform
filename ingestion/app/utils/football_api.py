@@ -66,29 +66,43 @@ class FootballAPIClient:
     async def get_fixtures_by_date_range(self, from_date: str, to_date: str) -> List[Dict[str, Any]]:
         """Recupera tutte le partite in un range di date"""
         fixtures = []
-        
+
         # L'API ha limite su quante partite restituisce per chiamata
         # Dividiamo per giorni per essere sicuri di prenderle tutte
         current_date = datetime.fromisoformat(from_date).date()
         end_date = datetime.fromisoformat(to_date).date()
-        
+
         while current_date <= end_date:
             date_str = current_date.isoformat()
-            
+
             try:
                 data = await self._make_request("fixtures", {"date": date_str})
                 daily_fixtures = data.get("response", [])
                 fixtures.extend(daily_fixtures)
                 logger.info(f"Retrieved {len(daily_fixtures)} fixtures for {date_str}")
-                
+
             except Exception as e:
                 logger.error(f"Failed to get fixtures for {date_str}: {str(e)}")
                 continue
-            
+
             current_date += timedelta(days=1)
             await asyncio.sleep(1)  # Pausa tra le richieste
-        
+
         return fixtures
+
+    async def get_live_fixtures(self) -> List[Dict[str, Any]]:
+        """Recupera tutte le partite attualmente live (in corso)"""
+        try:
+            logger.info("Fetching live fixtures from API-Football")
+            data = await self._make_request("fixtures", {"live": "all"})
+            live_fixtures = data.get("response", [])
+
+            logger.info(f"Retrieved {len(live_fixtures)} live fixtures from API")
+            return live_fixtures
+
+        except Exception as e:
+            logger.error(f"Failed to get live fixtures: {str(e)}")
+            return []
     
     async def get_odds_for_fixture(self, fixture_id: int) -> Optional[Dict[str, Any]]:
         """Recupera le quote per una specifica partita"""

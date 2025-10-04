@@ -155,6 +155,51 @@ class FixturesCollector:
         logger.info(f"Found {len(daily_fixtures)} daily fixtures for immediate processing")
         return [f.fixture_id for f in daily_fixtures]
 
+    async def collect_live_fixtures(self) -> List[Dict[str, Any]]:
+        """Raccogli partite attualmente live (in corso)"""
+        logger.info("Collecting currently live fixtures")
+
+        try:
+            # Ottieni partite live dall'API
+            live_fixtures = await football_api.get_live_fixtures()
+            logger.info(f"Collected {len(live_fixtures)} live fixtures from API")
+
+            # Filtro per partite davvero in corso (non future o passate)
+            now = datetime.now()
+            truly_live_fixtures = []
+
+            for fixture in live_fixtures:
+                fixture_date_str = fixture.get('fixture', {}).get('date')
+                status = fixture.get('fixture', {}).get('status', {})
+
+                if fixture_date_str:
+                    try:
+                        fixture_date = datetime.fromisoformat(fixture_date_str.replace('Z', '+00:00'))
+
+                        # Verifica che sia davvero live
+                        # - Deve essere iniziata (fixture_date nel passato)
+                        # - Deve avere status che indica partita in corso
+                        time_since_start = (now - fixture_date).total_seconds() / 60  # minuti
+
+                        live_statuses = ['1H', 'HT', '2H', 'ET', 'BT', 'P', 'LIVE', 'IN_PLAY', 'PLAYING']
+                        is_status_live = status.get('short') in live_statuses
+                        is_temporally_live = time_since_start >= -5 and time_since_start <= 150  # 2.5 ore max
+
+                        if is_status_live and is_temporally_live:
+                            truly_live_fixtures.append(fixture)
+                            logger.info(f"Live fixture: {fixture.get('teams', {}).get('home', {}).get('name')} vs {fixture.get('teams', {}).get('away', {}).get('name')} - {status.get('long')} ({time_since_start:.0f} min ago)")
+
+                    except ValueError as e:
+                        logger.warning(f"Invalid date format for live fixture: {fixture_date_str}")
+                        continue
+
+            logger.info(f"Filtered to {len(truly_live_fixtures)} truly live fixtures")
+            return truly_live_fixtures
+
+        except Exception as e:
+            logger.error(f"Error collecting live fixtures: {str(e)}")
+            return []
+
 # Singleton instance
 fixtures_collector = FixturesCollector()
 

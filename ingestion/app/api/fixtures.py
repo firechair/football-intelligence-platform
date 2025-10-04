@@ -278,12 +278,14 @@ async def get_live_fixtures(
     force_refresh: bool = Query(False, description="Force cache refresh"),
     db: Session = Depends(get_db)
 ):
-    """🔴 Partite REALMENTE LIVE - solo partite attualmente in corso (iniziate da max 5 min, non finite)"""
+    """🔴 Partite REALMENTE LIVE - cerca attivamente partite live dall'API e le integra nel sistema"""
 
     # 🔴 CACHE: Import necessario per cache
     from app.services.cache_service import get_live_fixtures_cache_key
+    from app.services.fixtures_collector import fixtures_collector
+    from app.services.odds_collector import odds_collector
 
-    # 🔴 CACHE: Prova a recuperare dalla cache (TTL 3s per live)
+    # 🔴 CACHE: Prova a recuperare dalla cache (TTL 10s per live - più lungo per ridurre chiamate API)
     cache_key = get_live_fixtures_cache_key()
     cached_response = cache_service.get(cache_key)
     if cached_response and not force_refresh:
@@ -292,67 +294,58 @@ async def get_live_fixtures(
     elif force_refresh:
         print(f"[OPERATOR] 🔄 Force refresh requested - bypassing cache")
 
-    print(f"[OPERATOR] ❌ Cache MISS - Querying DB for TRULY live fixtures")
+    print(f"[OPERATOR] ❌ Cache MISS - Actively searching for TRULY live fixtures from API")
 
     try:
+        # 1. CERCA ATTIVAMENTE partite live dall'API
+        live_fixtures_from_api = await fixtures_collector.collect_live_fixtures()
+
+        # 2. INTEGRA nuove partite live nel database (se non esistono già)
+        if live_fixtures_from_api:
+            await fixtures_collector.update_tracking_status(live_fixtures_from_api, db)
+            print(f"[OPERATOR] 📝 Integrated {len(live_fixtures_from_api)} live fixtures into database")
+
+            # 3. RACCOGLI quote per queste partite live appena scoperte
+            live_fixture_ids = [f.get('fixture', {}).get('id') for f in live_fixtures_from_api if f.get('fixture', {}).get('id')]
+            if live_fixture_ids:
+                print(f"[OPERATOR] 💰 Collecting odds for {len(live_fixture_ids)} newly discovered live fixtures")
+                await odds_collector.collect_odds_for_fixtures(live_fixture_ids, db)
+
+        # 4. RESTITUISCI partite live dal database (quelle appena aggiunte + eventuali esistenti)
         now = datetime.now()
 
-        # ✅ FILTRO REALMENTE LIVE: Solo partite iniziate da max 5 minuti e non ancora finite (max 120 min)
-        # Questo significa partite che sono iniziate tra 5 minuti fa e 120 minuti fa
-        live_start_cutoff = now - timedelta(minutes=120)  # Max 120 minuti fa (partite non ancora finite)
-        live_end_cutoff = now - timedelta(minutes=-5)     # Max 5 minuti nel futuro (partite già iniziate)
-
-        print(f"[OPERATOR] Live fixtures query: {live_start_cutoff.strftime('%H:%M:%S')} <= fixture_date <= {live_end_cutoff.strftime('%H:%M:%S')}")
-
-        # ✅ FILTRI STRETTI: Solo partite davvero live
-        query = db.query(FixtureTrackingStatus).filter(
+        # Trova tutte le partite che sono davvero live nel database
+        # Include quelle appena aggiunte dall'API + quelle esistenti che sono live
+        live_fixtures_in_db = db.query(FixtureTrackingStatus).filter(
             and_(
-                FixtureTrackingStatus.fixture_date >= live_start_cutoff,  # Iniziate max 120 min fa
-                FixtureTrackingStatus.fixture_date <= live_end_cutoff,    # Non future oltre 5 min
-                FixtureTrackingStatus.tracking_status.in_(["active", "live"]),
+                FixtureTrackingStatus.tracking_status.in_(["live", "active"]),
                 FixtureTrackingStatus.tracking_status != "completed"
             )
-        )
+        ).order_by(FixtureTrackingStatus.fixture_date.desc()).limit(limit).all()
 
-        fixtures = query.order_by(FixtureTrackingStatus.fixture_date.desc()).limit(limit).all()
+        # Filtro finale per partite davvero live
+        truly_live_matches = []
+        for fixture in live_fixtures_in_db:
+            match_time = fixture.fixture_date
+            time_since_start = (now - match_time).total_seconds() / 60  # minuti
 
-        print(f"[OPERATOR] Found {len(fixtures)} TRULY live fixtures in database")
-        for f in fixtures[:5]:  # Log first 5 fixtures
-            time_diff = (now - f.fixture_date).total_seconds() / 60
-            print(f"[OPERATOR] Fixture {f.fixture_id}: {f.fixture_date} ({time_diff:.0f} min ago, status: {f.tracking_status})")
-
-        live_matches = []
-        for fixture in fixtures:
-            try:
-                # Verifica finale se la partita è ancora valida come live
-                match_time = fixture.fixture_date
-                time_since_start = (now - match_time).total_seconds() / 60  # minuti
-
-                # Controllo finale: deve essere iniziata (max 5 min fa) e non finita (max 120 min fa)
-                if time_since_start < -5:  # Troppo futura
-                    print(f"[OPERATOR] ⚠️ Skipping fixture {fixture.fixture_id} - too future ({time_since_start:.0f} min)")
-                    continue
-                elif time_since_start > 120:  # Troppo vecchia (probabilmente finita)
-                    print(f"[OPERATOR] ⚠️ Marking fixture {fixture.fixture_id} as completed - too old ({time_since_start:.0f} min)")
-                    fixture.tracking_status = "completed"
-                    fixture.updated_at = now
-                    db.commit()
+            # Controllo rigoroso: partita deve essere iniziata e non finita
+            if time_since_start >= -5 and time_since_start <= 150:  # Max 5 min anticipo, max 2.5 ore durata
+                try:
+                    fixture_data = await _build_fixture_response(fixture, db)
+                    truly_live_matches.append(fixture_data)
+                    print(f"[OPERATOR] ✅ LIVE: {fixture.fixture_id} ({fixture.home_team} vs {fixture.away_team}) - started {time_since_start:.0f} min ago")
+                except Exception as e:
+                    print(f"[OPERATOR] ❌ Error building live fixture {fixture.fixture_id}: {str(e)}")
                     continue
 
-                fixture_data = await _build_fixture_response(fixture, db)
-                live_matches.append(fixture_data)
-                print(f"[OPERATOR] ✅ Added TRULY live fixture {fixture.fixture_id} ({fixture.home_team} vs {fixture.away_team}) - started {time_since_start:.0f} min ago")
-            except Exception as e:
-                print(f"[OPERATOR] ❌ Error building live fixture {fixture.fixture_id}: {str(e)}")
-                continue
+        print(f"[OPERATOR] 🎯 Found and returning {len(truly_live_matches)} TRULY live matches from API + DB")
 
-        print(f"[OPERATOR] 🎯 Returning {len(live_matches)} TRULY live matches (started within last 120 min, not older than 5 min ago)")
+        # 🔴 CACHE: Salva in cache per 10 secondi (più lungo per ridurre stress API)
+        cache_service.set(cache_key, truly_live_matches, ttl_seconds=10)
+        print(f"[OPERATOR] 💾 Cached {len(truly_live_matches)} truly live fixtures (10s TTL)")
 
-        # 🔴 CACHE: Salva in cache per 3 secondi (ridotto da 5s per aggiornamenti più frequenti)
-        cache_service.set(cache_key, live_matches, ttl_seconds=3)
-        print(f"[OPERATOR] 💾 Cached {len(live_matches)} truly live fixtures (3s TTL)")
-
-        return live_matches
+        return truly_live_matches
 
     except Exception as e:
         print(f"[OPERATOR] ❌ Error in get_live_fixtures: {str(e)}")
