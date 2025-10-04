@@ -279,7 +279,10 @@ async def get_live_fixtures(
     db: Session = Depends(get_db)
 ):
     """🔴 Partite LIVE e RECENTI con CACHE (3s) - partite negli ultimi 4h + prossime"""
-    
+
+    # 🔴 CACHE: Import necessario per cache
+    from app.services.cache_service import get_live_fixtures_cache_key
+
     # 🔴 CACHE: Prova a recuperare dalla cache (TTL 3s per live)
     cache_key = get_live_fixtures_cache_key()
     cached_response = cache_service.get(cache_key)
@@ -338,9 +341,8 @@ async def get_live_fixtures(
 
                     # 🚨 INVALIDA CACHE: Forza refresh della cache live fixtures
                     try:
-                        from app.services.cache_service import get_live_fixtures_cache_key
-                        cache_key = get_live_fixtures_cache_key()
-                        cache_service.delete(cache_key)
+                        cache_key_to_delete = get_live_fixtures_cache_key()
+                        cache_service.delete(cache_key_to_delete)
                         print(f"[OPERATOR] 🗑️ Invalidated live fixtures cache after marking {fixture.fixture_id} as completed")
                     except Exception as e:
                         print(f"[OPERATOR] ❌ Error invalidating cache for fixture {fixture.fixture_id}: {str(e)}")
