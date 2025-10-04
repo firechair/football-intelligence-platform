@@ -297,13 +297,14 @@ async def get_live_fixtures(
     try:
         now = datetime.now()
         
-        # ✅ FILTRO REALISTICO: Partite LIVE reali
-        # 1. Partite iniziate negli ultimi 90 minuti (partite in corso - durata calcio)
-        # 2. Partite che iniziano nelle prossime 12 ore (partite programmate oggi - include sera)
+        # ✅ FILTRO PER PARTITE DI OGGI: Mostra tutte le partite programmate oggi
+        # 1. Partite iniziate negli ultimi 90 minuti (partite in corso)
+        # 2. TUTTE le partite programmate per oggi (partite future di oggi)
         # 3. ESCLUDI TUTTE le partite di giorni precedenti
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)  # Inizio giornata corrente
+        tomorrow_start = today_start + timedelta(days=1)  # Inizio giornata successiva
         start_time = max(today_start, now - timedelta(minutes=90))  # Ultime 90 minuti (partite in corso)
-        end_time = now + timedelta(hours=12)  # Prossime 12 ore (partite di oggi fino a sera)
+        end_time = tomorrow_start  # Tutte le partite di oggi fino a mezzanotte
 
         print(f"[OPERATOR] Live fixtures query: {start_time.strftime('%H:%M:%S')} <= fixture_date <= {end_time.strftime('%H:%M:%S')}")
 
