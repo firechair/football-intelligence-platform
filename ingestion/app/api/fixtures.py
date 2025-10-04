@@ -272,6 +272,69 @@ async def get_fixtures_by_date_range(
     
     return response
 
+@router.get("/live-debug", response_model=Dict[str, Any])
+async def get_live_fixtures_debug(
+    db: Session = Depends(get_db)
+):
+    """🔍 DEBUG endpoint per diagnosticare il problema live fixtures"""
+    debug_info = {}
+
+    try:
+        # Test 1: Count all fixtures in table
+        total_count = db.query(FixtureTrackingStatus).count()
+        debug_info["total_fixtures_in_table"] = total_count
+
+        # Test 2: Count fixtures for today
+        now = datetime.now()
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        tomorrow_start = today_start + timedelta(days=1)
+
+        today_count = db.query(FixtureTrackingStatus).filter(
+            and_(
+                FixtureTrackingStatus.fixture_date >= today_start,
+                FixtureTrackingStatus.fixture_date <= tomorrow_start
+            )
+        ).count()
+        debug_info["fixtures_for_today"] = today_count
+
+        # Test 3: Same filters as live endpoint
+        start_time = today_start
+        end_time = tomorrow_start
+
+        query = db.query(FixtureTrackingStatus).filter(
+            and_(
+                FixtureTrackingStatus.fixture_date >= start_time,
+                FixtureTrackingStatus.fixture_date <= end_time
+            )
+        )
+
+        fixtures = query.order_by(FixtureTrackingStatus.fixture_date.desc()).limit(10).all()
+        debug_info["live_query_result_count"] = len(fixtures)
+
+        # Debug first fixture
+        if fixtures:
+            f = fixtures[0]
+            debug_info["first_fixture"] = {
+                "id": f.fixture_id,
+                "date": str(f.fixture_date),
+                "status": f.tracking_status,
+                "home_team": f.home_team,
+                "away_team": f.away_team
+            }
+
+        debug_info["start_time"] = str(start_time)
+        debug_info["end_time"] = str(end_time)
+        debug_info["now"] = str(now)
+
+        return debug_info
+
+    except Exception as e:
+        debug_info["error"] = str(e)
+        debug_info["error_type"] = str(type(e))
+        import traceback
+        debug_info["traceback"] = traceback.format_exc()
+        return debug_info
+
 @router.get("/live", response_model=List[FixtureResponse])
 async def get_live_fixtures(
     limit: int = Query(50, ge=1, le=100, description="Max live fixtures to return"),
