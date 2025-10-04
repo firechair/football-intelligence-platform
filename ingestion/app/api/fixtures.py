@@ -291,28 +291,33 @@ async def get_live_fixtures(
     try:
         now = datetime.now()
         
-        # ✅ FILTRO ALLARGATO: Partite live e recently played
-        # 1. Partite iniziate max 4 ore fa (per includere partite completate di recente)
-        # 2. Partite che iniziano nei prossimi 60 minuti (pre-live)
-        start_time = now - timedelta(hours=4)  # Max 4 ore fa
-        end_time = now + timedelta(minutes=60)  # Prossimi 60 min
-        
+        # ✅ FILTRO ULTRA-STRETTO: Solo partite ATTUALMENTE IN CORSO
+        # 1. Partite iniziate negli ultimi 15 minuti (partite realmente live)
+        # 2. Partite che iniziano nei prossimi 10 minuti (pre-live immediato)
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)  # Inizio giornata corrente
+        start_time = max(today_start, now - timedelta(minutes=15))  # Solo ultime 15 minuti!
+        end_time = now + timedelta(minutes=10)  # Solo prossimi 10 minuti
+
         print(f"[OPERATOR] Live fixtures query: {start_time.strftime('%H:%M:%S')} <= fixture_date <= {end_time.strftime('%H:%M:%S')}")
-        
-        # ✅ ESCLUDI ESPLICITAMENTE LE PARTITE COMPLETATE
+
+        # ✅ ESCLUDI ESPLICITAMENTE LE PARTITE COMPLETATE + SOLO PARTITE DI OGGI
         query = db.query(FixtureTrackingStatus).filter(
             and_(
                 FixtureTrackingStatus.fixture_date >= start_time,
                 FixtureTrackingStatus.fixture_date <= end_time,
+                FixtureTrackingStatus.fixture_date >= today_start,  # ✅ SOLO PARTITE DI OGGI
                 FixtureTrackingStatus.tracking_status.in_(["active", "live", "pending"]),
                 FixtureTrackingStatus.tracking_status != "completed"  # ✅ ESCLUDI COMPLETATE
             )
         )
-        
+
         fixtures = query.order_by(FixtureTrackingStatus.fixture_date.desc()).limit(limit).all()
-        
+
         print(f"[OPERATOR] Found {len(fixtures)} potential live fixtures in database")
-        
+        for f in fixtures[:5]:  # Log first 5 fixtures
+            time_diff = (now - f.fixture_date).total_seconds() / 60
+            print(f"[OPERATOR] Fixture {f.fixture_id}: {f.fixture_date} ({time_diff:.0f} min ago, status: {f.tracking_status})")
+
         live_matches = []
         for fixture in fixtures:
             try:
@@ -320,9 +325,11 @@ async def get_live_fixtures(
                 match_time = fixture.fixture_date
                 time_since_start = (now - match_time).total_seconds() / 60  # minuti
 
-                # ✅ DOPPIO CONTROLLO: Se la partita è iniziata più di 4 ore fa, è troppo vecchia
-                if time_since_start > 240:  # 4 ore in minuti
-                    print(f"[OPERATOR] ⚠️ Skipping fixture {fixture.fixture_id} - started {time_since_start:.0f} min ago (should be marked completed)")
+                # ✅ AGGIORNAMENTO AUTOMATICO: Se la partita è iniziata più di 30 minuti fa, marca come completata
+                if time_since_start > 30:  # 30 minuti (partite brevi o già finite)
+                    print(f"[OPERATOR] ⚠️ Marking fixture {fixture.fixture_id} as completed - started {time_since_start:.0f} min ago")
+                    fixture.tracking_status = "completed"
+                    db.commit()
                     continue
 
                 # ✅ Se la partita inizia tra più di 5 minuti, non è ancora live
