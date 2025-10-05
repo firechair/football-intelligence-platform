@@ -13,7 +13,7 @@ import asyncio
 from datetime import datetime
 
 from app.core.config import settings
-from app.api import historical, charts, admin, predictions, homepage, fixtures, odds, assets, database_admin  # 🆕 fixtures & odds API + assets + database_admin
+from app.api import historical, charts, admin, predictions, homepage, fixtures, odds, assets, database_admin
 from app.core.scheduler import scheduler
 
 # Logging setup
@@ -35,16 +35,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Routers with /api/v1 prefix
+# API Routers
 app.include_router(historical.router, prefix="/api/v1")
 app.include_router(charts.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
-app.include_router(predictions.router, prefix="/api/v1")  # 🆕 NUOVO
-app.include_router(homepage.router, prefix="/api/v1")     # 🆕 Homepage API
-app.include_router(fixtures.router, prefix="/api/v1")     # 🆕 Fixtures API
-app.include_router(odds.router, prefix="/api/v1")         # 🆕 Odds API
-app.include_router(assets.router, prefix="/api/v1")       # 🆕 Assets/Logo Proxy API
-app.include_router(database_admin.router, prefix="/api/v1") # 🔧 Database Admin API
+app.include_router(predictions.router, prefix="/api/v1")
+app.include_router(homepage.router, prefix="/api/v1")
+app.include_router(fixtures.router, prefix="/api/v1")
+app.include_router(odds.router, prefix="/api/v1")
+app.include_router(assets.router, prefix="/api/v1")
+app.include_router(database_admin.router, prefix="/api/v1")
 
 # Startup e shutdown events
 @app.on_event("startup")
