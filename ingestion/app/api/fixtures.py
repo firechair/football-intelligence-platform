@@ -282,25 +282,9 @@ async def get_live_fixtures(
     print(f"[OPERATOR] 🚨 Emergency live fixtures endpoint called")
 
     try:
-        # Test minimo: restituisci una partita finta nel formato corretto
-        from datetime import datetime
-        emergency_match = FixtureResponse(
-            fixture_id=999999,
-            home_team="Test Home",
-            away_team="Test Away",
-            home_team_logo="",
-            away_team_logo="",
-            fixture_date=datetime.now(),
-            league_id=999,
-            league_name="Test League",
-            country_name="Test Country",
-            league_logo="",
-            best_odds={"1": {"TestBookie": 2.0}, "X": {"TestBookie": 3.0}, "2": {"TestBookie": 4.0}},
-            prediction=None
-        )
-
-        print(f"[OPERATOR] 🚨 Returning emergency test match")
-        return [emergency_match]
+        # Test minimo: restituisci lista vuota per verificare che l'endpoint risponde
+        print(f"[OPERATOR] 🚨 Returning empty list")
+        return []
 
     except Exception as e:
         print(f"[OPERATOR] ❌ Emergency endpoint failed: {str(e)}")
