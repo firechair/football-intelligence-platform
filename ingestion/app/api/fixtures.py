@@ -289,32 +289,18 @@ async def get_live_fixtures(
         live_fixtures_from_api = await football_api.get_live_fixtures()
         print(f"[OPERATOR] 📡 Got {len(live_fixtures_from_api)} fixtures from API")
 
-        # Filtra solo partite davvero live (non future)
-        from datetime import datetime
-        now = datetime.now()
+        # Filtra solo partite davvero live (quelle con status live)
         truly_live_fixtures = []
 
         for fixture in live_fixtures_from_api:
-            fixture_date_str = fixture.get('fixture', {}).get('date')
             status = fixture.get('fixture', {}).get('status', {})
 
-            if fixture_date_str:
-                try:
-                    from datetime import datetime
-                    fixture_date = datetime.fromisoformat(fixture_date_str.replace('Z', '+00:00'))
-                    time_since_start = (now - fixture_date).total_seconds() / 60  # minuti
+            live_statuses = ['1H', 'HT', '2H', 'ET', 'BT', 'P', 'LIVE', 'IN_PLAY', 'PLAYING']
+            is_status_live = status.get('short') in live_statuses
 
-                    live_statuses = ['1H', 'HT', '2H', 'ET', 'BT', 'P', 'LIVE', 'IN_PLAY', 'PLAYING']
-                    is_status_live = status.get('short') in live_statuses
-                    is_temporally_live = time_since_start >= -5 and time_since_start <= 150  # 2.5 ore max
-
-                    if is_status_live and is_temporally_live:
-                        truly_live_fixtures.append(fixture)
-                        print(f"[OPERATOR] ⚽ Live fixture: {fixture.get('teams', {}).get('home', {}).get('name')} vs {fixture.get('teams', {}).get('away', {}).get('name')} - {status.get('long')} ({time_since_start:.0f} min ago)")
-
-                except ValueError as e:
-                    print(f"[OPERATOR] ⚠️ Invalid date format for live fixture: {fixture_date_str}")
-                    continue
+            if is_status_live:
+                truly_live_fixtures.append(fixture)
+                print(f"[OPERATOR] ⚽ Live fixture: {fixture.get('teams', {}).get('home', {}).get('name')} vs {fixture.get('teams', {}).get('away', {}).get('name')} - {status.get('long')}")
 
         print(f"[OPERATOR] 🎯 Filtered to {len(truly_live_fixtures)} truly live fixtures")
 
