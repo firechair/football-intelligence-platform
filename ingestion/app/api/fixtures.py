@@ -282,12 +282,23 @@ async def get_live_fixtures(
     print(f"[OPERATOR] 🔴 Live fixtures endpoint called")
 
     try:
-        # Recupera partite live dall'API-Football direttamente
-        from app.utils.football_api import football_api
+        # Recupera partite live dall'API-Football con chiamata HTTP diretta
+        print(f"[OPERATOR] 📡 Getting live fixtures from API-Football (direct HTTP)...")
 
-        print(f"[OPERATOR] 📡 Getting live fixtures from API-Football...")
-        live_fixtures_from_api = await football_api.get_live_fixtures()
-        print(f"[OPERATOR] 📡 Got {len(live_fixtures_from_api)} fixtures from API")
+        import httpx
+        api_key = "REDACTED"
+        url = "https://v3.football.api-sports.io/fixtures?live=all"
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(url, headers={"x-apisports-key": api_key})
+
+            if response.status_code == 200:
+                data = response.json()
+                live_fixtures_from_api = data.get('response', [])
+                print(f"[OPERATOR] 📡 Got {len(live_fixtures_from_api)} fixtures from API")
+            else:
+                print(f"[OPERATOR] ❌ API returned status {response.status_code}")
+                live_fixtures_from_api = []
 
         # Filtra solo partite davvero live (quelle con status live)
         truly_live_fixtures = []
