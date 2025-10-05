@@ -323,38 +323,56 @@ async def get_live_fixtures(
                                 best_odds[bookmaker_name]["2"] = float(odds_record.away_win_odds)
                     else:
                         print(f"[OPERATOR] ⚠️ No odds in DB for fixture {fixture_id}, trying API fallback...")
-                        # Fallback: recupera quote direttamente dall'API-Football
+                        # Fallback AGGRESSIVO: recupera quote direttamente dall'API-Football
                         try:
+                            print(f"[OPERATOR] 🔄 Fetching odds from API-Football for fixture {fixture_id}...")
                             odds_data = await football_api.get_odds_for_fixture(fixture_id)
-                            if odds_data and len(odds_data) > 0:
-                                print(f"[OPERATOR] 📡 Got odds from API for fixture {fixture_id}")
-                                # Salva le quote nel database per future richieste
-                                await _save_odds_to_database(odds_data, fixture_id, db)
 
-                                # Organizza le quote come dal database
+                            if odds_data and len(odds_data) > 0:
+                                print(f"[OPERATOR] ✅ Got {len(odds_data)} bookmaker(s) with odds from API for fixture {fixture_id}")
+
+                                # Salva le quote nel database per future richieste
+                                try:
+                                    await _save_odds_to_database(odds_data, fixture_id, db)
+                                    print(f"[OPERATOR] 💾 Saved odds to database for fixture {fixture_id}")
+                                except Exception as save_error:
+                                    print(f"[OPERATOR] ⚠️ Error saving odds to DB: {str(save_error)}")
+
+                                # Organizza le quote per il frontend
                                 for bookmaker_data in odds_data:
                                     bookmaker_name = bookmaker_data.get('bookmaker', {}).get('name', 'Unknown')
                                     if bookmaker_name not in best_odds:
                                         best_odds[bookmaker_name] = {}
 
-                                    odds_values = bookmaker_data.get('bets', [{}])[0].get('values', [])
-                                    for odd_info in odds_values:
-                                        odd_value = odd_info.get('odd', '')
-                                        value_type = odd_info.get('value', '')
+                                    bets = bookmaker_data.get('bets', [])
+                                    for bet in bets:
+                                        if bet.get('name') == 'Match Winner':  # 1X2 odds
+                                            values = bet.get('values', [])
+                                            for value in values:
+                                                val_type = value.get('value')
+                                                odd_val = value.get('odd')
 
-                                        if value_type == '1' and odd_value:
-                                            best_odds[bookmaker_name]["1"] = float(odd_value)
-                                        elif value_type == 'X' and odd_value:
-                                            best_odds[bookmaker_name]["X"] = float(odd_value)
-                                        elif value_type == '2' and odd_value:
-                                            best_odds[bookmaker_name]["2"] = float(odd_value)
+                                                if val_type == '1' and odd_val:
+                                                    best_odds[bookmaker_name]["1"] = float(odd_val)
+                                                elif val_type == 'X' and odd_val:
+                                                    best_odds[bookmaker_name]["X"] = float(odd_val)
+                                                elif val_type == '2' and odd_val:
+                                                    best_odds[bookmaker_name]["2"] = float(odd_val)
+
+                                if best_odds and len(best_odds) > 0:
+                                    print(f"[OPERATOR] 🎯 Successfully loaded odds for fixture {fixture_id}: {list(best_odds.keys())}")
+                                else:
+                                    print(f"[OPERATOR] ⚠️ API returned odds but couldn't parse them for fixture {fixture_id}")
                             else:
-                                print(f"[OPERATOR] ⚠️ No odds available from API for fixture {fixture_id}")
+                                print(f"[OPERATOR] ❌ No odds data returned from API for fixture {fixture_id}")
                         except Exception as api_error:
-                            print(f"[OPERATOR] ⚠️ Error getting odds from API for fixture {fixture_id}: {str(api_error)}")
+                            print(f"[OPERATOR] 💥 Error getting odds from API for fixture {fixture_id}: {str(api_error)}")
+                            import traceback
+                            traceback.print_exc()
 
                 except Exception as e:
                     print(f"[OPERATOR] ⚠️ Error retrieving odds for fixture {fixture_id}: {str(e)}")
+                    best_odds = {}  # Assicurati che best_odds sia vuoto in caso di errore
 
             # Usa le funzioni per recuperare i loghi correttamente
             home_team_name = teams_data.get('home', {}).get('name', 'Unknown')
