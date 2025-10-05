@@ -277,13 +277,42 @@ async def get_live_fixtures(
     limit: int = Query(50, ge=1, le=100, description="Max live fixtures to return"),
     force_refresh: bool = Query(False, description="Force cache refresh")
 ):
-    """🔴 Partite REALMENTE LIVE - versione stabile"""
+    """🔴 Partite REALMENTE LIVE - versione stabile con recupero dati"""
     print(f"[OPERATOR] 🔴 Live fixtures endpoint called")
 
     try:
-        # Per ora restituisci lista vuota per stabilità
-        print(f"[OPERATOR] 🎯 Returning empty list for stability")
-        return []
+        # Recupera partite live dall'API-Football direttamente
+        from app.utils.football_api import football_api
+
+        print(f"[OPERATOR] 📡 Getting live fixtures from API-Football...")
+        live_fixtures_from_api = await football_api.get_live_fixtures()
+        print(f"[OPERATOR] 📡 Got {len(live_fixtures_from_api)} fixtures from API")
+
+        # Converti in formato semplice per il frontend
+        live_matches = []
+        for fixture in live_fixtures_from_api[:limit]:  # Limita risultati
+            fixture_data = fixture.get('fixture', {})
+            teams_data = fixture.get('teams', {})
+            league_data = fixture.get('league', {})
+
+            # Crea oggetto semplificato
+            match = {
+                "fixture_id": fixture_data.get('id'),
+                "home_team": teams_data.get('home', {}).get('name', 'Unknown'),
+                "away_team": teams_data.get('away', {}).get('name', 'Unknown'),
+                "league_name": league_data.get('name', 'Unknown League'),
+                "country_name": league_data.get('country'),
+                "fixture_date": fixture_data.get('date'),
+                "best_odds": {},  # Vuoto per ora
+                "home_team_logo": "",
+                "away_team_logo": "",
+                "league_logo": "",
+                "prediction": None
+            }
+            live_matches.append(match)
+
+        print(f"[OPERATOR] 🎯 Returning {len(live_matches)} live matches")
+        return live_matches
 
     except Exception as e:
         print(f"[OPERATOR] ❌ Error in get_live_fixtures: {str(e)}")
