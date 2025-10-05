@@ -17,10 +17,9 @@ class OddsTrackerSettings:
     # Database PostgreSQL condiviso (stesso del backend principale)
     DATABASE_URL: str = _DATABASE_URL
     
-    # Football API (stesse credenziali del backend principale)
+    # Football API - usa chiave corretta (ignora variabile ambiente se sbagliata)
     # FIXED: Remove FOOTBALL_API_HOST - not needed for direct API-Football integration
-    FOOTBALL_API_KEY: str = os.getenv("FOOTBALL_API_KEY", 
-        "REDACTED")
+    FOOTBALL_API_KEY: str = "REDACTED"  # Chiave API valida
     FOOTBALL_API_BASE_URL: str = "https://v3.football.api-sports.io"
     
     # Rate Limiting (configurazione coordinata con backend - totale 3 req/secondo)
