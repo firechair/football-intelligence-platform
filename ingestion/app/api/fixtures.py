@@ -323,128 +323,15 @@ async def get_live_fixtures(
             league_data = fixture.get('league', {})
             fixture_id = fixture_data.get('id')
 
-            # Recupera quote reali per questa partita
-            best_odds = {}
-            if fixture_id:
-                print(f"[OPERATOR] 🔍 Processing real odds for fixture {fixture_id}")
-                try:
-                    # Prima cerca nel database
-                    odds_records = db.query(ExtendedOddsHistory).filter(
-                        ExtendedOddsHistory.fixture_id == fixture_id
-                    ).order_by(ExtendedOddsHistory.created_at.desc()).limit(5).all()
-
-                    if odds_records and len(odds_records) > 0:
-                        print(f"[OPERATOR] 💰 Found {len(odds_records)} odds records in DB for fixture {fixture_id}")
-                        # Organizza le quote
-                        for odds_record in odds_records:
-                            bookmaker_name = odds_record.bookmaker_name or "Bookie"
-                            if bookmaker_name not in best_odds:
-                                best_odds[bookmaker_name] = {}
-
-                            if odds_record.home_win_odds:
-                                best_odds[bookmaker_name]["1"] = float(odds_record.home_win_odds)
-                            if odds_record.draw_odds:
-                                best_odds[bookmaker_name]["X"] = float(odds_record.draw_odds)
-                            if odds_record.away_win_odds:
-                                best_odds[bookmaker_name]["2"] = float(odds_record.away_win_odds)
-                        print(f"[OPERATOR] ✅ Loaded odds from DB for fixture {fixture_id}")
-                    else:
-                        print(f"[OPERATOR] ⚠️ No odds in DB for fixture {fixture_id}, fetching from API...")
-                        # Recupera direttamente dall'API con chiamata HTTP diretta
-                        try:
-                            import httpx
-                            print(f"[OPERATOR] 🌐 Direct HTTP call to API-Football for fixture {fixture_id}...")
-
-                            api_key = "REDACTED"
-                            url = f"https://v3.football.api-sports.io/odds?fixture={fixture_id}"
-
-                            async with httpx.AsyncClient(timeout=15.0) as client:
-                                response = await client.get(url, headers={"x-apisports-key": api_key})
-                                print(f"[OPERATOR] 🌐 HTTP Status for {fixture_id}: {response.status_code}")
-
-                                if response.status_code == 200:
-                                    try:
-                                        data = response.json()
-                                        odds_data = data.get('response', [])
-                                        print(f"[OPERATOR] 📡 Direct API response for {fixture_id}: {len(odds_data)} bookmakers")
-
-                                        if odds_data and len(odds_data) > 0:
-                                            # Prendi il primo bookmaker disponibile
-                                            bookmaker_data = odds_data[0]
-                                            bookmaker_name = bookmaker_data.get('bookmaker', {}).get('name', 'Bookie')
-                                            bets = bookmaker_data.get('bets', [])
-
-                                            print(f"[OPERATOR] 📊 Processing bookmaker: {bookmaker_name}, bets: {len(bets)}")
-
-                                            for bet in bets:
-                                                bet_name = bet.get('name', '')
-                                                print(f"[OPERATOR] 🎯 Checking bet: {bet_name}")
-                                                if bet_name == 'Match Winner':
-                                                    values = bet.get('values', [])
-                                                    print(f"[OPERATOR] 🎯 Found Match Winner with {len(values)} values")
-
-                                                    for value in values:
-                                                        val_type = value.get('value')
-                                                        odd_val = value.get('odd')
-                                                        print(f"[OPERATOR] 🎯 Value: {val_type} = {odd_val}")
-
-                                                        if val_type and odd_val:
-                                                            if bookmaker_name not in best_odds:
-                                                                best_odds[bookmaker_name] = {}
-
-                                                            if val_type == '1':
-                                                                best_odds[bookmaker_name]["1"] = float(odd_val)
-                                                            elif val_type == 'X':
-                                                                best_odds[bookmaker_name]["X"] = float(odd_val)
-                                                            elif val_type == '2':
-                                                                best_odds[bookmaker_name]["2"] = float(odd_val)
-
-                                            print(f"[OPERATOR] ✅ Final odds for fixture {fixture_id}: {best_odds}")
-
-                                            # Salva nel database per future richieste
-                                            if best_odds:
-                                                try:
-                                                    await _save_odds_to_database(odds_data, fixture_id, db)
-                                                    print(f"[OPERATOR] 💾 Saved odds to database")
-                                                except Exception as save_error:
-                                                    print(f"[OPERATOR] ⚠️ Save error: {str(save_error)}")
-                                        else:
-                                            print(f"[OPERATOR] ⚠️ No odds data in API response for {fixture_id}")
-                                    except Exception as json_error:
-                                        print(f"[OPERATOR] 💥 JSON parsing error for {fixture_id}: {str(json_error)}")
-                                else:
-                                    print(f"[OPERATOR] ❌ API returned status {response.status_code} for {fixture_id}")
-                                    try:
-                                        error_text = response.text
-                                        print(f"[OPERATOR] ❌ Error response: {error_text[:200]}")
-                                    except:
-                                        print(f"[OPERATOR] ❌ Could not read error response")
-
-                        except Exception as api_error:
-                            print(f"[OPERATOR] 💥 Direct API Error for fixture {fixture_id}: {str(api_error)}")
-                            import traceback
-                            traceback.print_exc()
-
-                except Exception as e:
-                    print(f"[OPERATOR] ❌ General error for fixture {fixture_id}: {str(e)}")
-                    import traceback
-                    traceback.print_exc()
-
-            # TEMPORARY FIX: Se non abbiamo quote reali, metti quote fittizie per permettere al frontend di mostrare le partite
-            if not best_odds or len(best_odds) == 0:
-                # Quote realistiche basate sui nomi delle squadre
-                import random
-                base_odds = [2.1, 3.2, 3.5]  # Quote base 1X2
-                variation = random.uniform(0.8, 1.2)  # Variazione casuale
-
-                best_odds = {
-                    "LiveBookie": {
-                        "1": round(base_odds[0] * variation, 2),
-                        "X": round(base_odds[1] * variation, 2),
-                        "2": round(base_odds[2] * variation, 2)
-                    }
+            # TEMPORARY SOLUTION: Quote fittizie per permettere al frontend di mostrare le partite live
+            # TODO: Fix real odds retrieval
+            best_odds = {
+                "LiveBookie": {
+                    "1": 2.10,
+                    "X": 3.25,
+                    "2": 3.40
                 }
-                print(f"[OPERATOR] 🧪 Added TEMPORARY odds for fixture {fixture_id}: {best_odds}")
+            }
 
             # Usa le funzioni per recuperare i loghi correttamente
             home_team_name = teams_data.get('home', {}).get('name', 'Unknown')
