@@ -300,53 +300,38 @@ async def get_live_fixtures(
         live_fixtures_from_api = await football_api.get_live_fixtures()
         print(f"[OPERATOR] 📡 Got {len(live_fixtures_from_api)} fixtures from API")
 
-        # Filtro partite davvero live
-        now = datetime.now()
+        # Semplifica: usa direttamente le partite che l'API considera live
         truly_live_matches = []
 
-        # Per debug: limita a 5 partite
-        debug_limit = min(5, limit)
-        for fixture in live_fixtures_from_api[:debug_limit]:
+        for fixture in live_fixtures_from_api[:limit]:
             fixture_data = fixture.get('fixture', {})
             teams_data = fixture.get('teams', {})
             league_data = fixture.get('league', {})
-            status = fixture_data.get('status', {})
 
-            # Verifica se è davvero live
-            fixture_date_str = fixture_data.get('date')
-            if fixture_date_str:
-                try:
-                    fixture_date = datetime.fromisoformat(fixture_date_str.replace('Z', '+00:00'))
-                    time_since_start = (now - fixture_date).total_seconds() / 60
-                    live_statuses = ['1H', 'HT', '2H', 'ET', 'BT', 'P', 'LIVE', 'IN_PLAY', 'PLAYING']
-                    is_status_live = status.get('short') in live_statuses
-                    # Per debug: allarga il filtro temporale
-                    is_temporally_live = time_since_start >= -60 and time_since_start <= 300  # 1 ora anticipo, 5 ore durata
+            try:
+                fixture_date = datetime.fromisoformat(fixture_data.get('date', '').replace('Z', '+00:00'))
 
-                    if is_status_live and is_temporally_live:
-                        # Converti in FixtureResponse
-                        match_response = FixtureResponse(
-                            fixture_id=fixture_data.get('id'),
-                            home_team=teams_data.get('home', {}).get('name', 'Unknown'),
-                            away_team=teams_data.get('away', {}).get('name', 'Unknown'),
-                            home_team_logo=get_team_logo_url(teams_data.get('home', {}).get('name'), teams_data.get('home', {}).get('logo')),
-                            away_team_logo=get_team_logo_url(teams_data.get('away', {}).get('name'), teams_data.get('away', {}).get('logo')),
-                            fixture_date=fixture_date,
-                            league_id=league_data.get('id'),
-                            league_name=league_data.get('name', 'Unknown League'),
-                            country_name=league_data.get('country'),
-                            league_logo=get_league_logo_url(league_data.get('name'), league_data.get('logo')),
-                            best_odds={},  # Per ora senza quote
-                            prediction=None
-                        )
-                        truly_live_matches.append(match_response)
-                        print(f"[OPERATOR] ✅ LIVE: {match_response.home_team} vs {match_response.away_team} ({status.get('short')})")
-                    else:
-                        print(f"[OPERATOR] ❌ Filtered out: {fixture_data.get('id')} - status: {status.get('short')} ({'OK' if is_status_live else 'BAD'}), time_diff: {time_since_start:.1f}min ({'OK' if is_temporally_live else 'BAD'})")
+                # Converti in FixtureResponse
+                match_response = FixtureResponse(
+                    fixture_id=fixture_data.get('id'),
+                    home_team=teams_data.get('home', {}).get('name', 'Unknown'),
+                    away_team=teams_data.get('away', {}).get('name', 'Unknown'),
+                    home_team_logo=get_team_logo_url(teams_data.get('home', {}).get('name'), teams_data.get('home', {}).get('logo')),
+                    away_team_logo=get_team_logo_url(teams_data.get('away', {}).get('name'), teams_data.get('away', {}).get('logo')),
+                    fixture_date=fixture_date,
+                    league_id=league_data.get('id'),
+                    league_name=league_data.get('name', 'Unknown League'),
+                    country_name=league_data.get('country'),
+                    league_logo=get_league_logo_url(league_data.get('name'), league_data.get('logo')),
+                    best_odds={},  # Per ora senza quote
+                    prediction=None
+                )
+                truly_live_matches.append(match_response)
+                print(f"[OPERATOR] ✅ Added: {match_response.home_team} vs {match_response.away_team}")
 
-                except Exception as e:
-                    print(f"[OPERATOR] ⚠️ Error processing fixture {fixture_data.get('id')}: {str(e)}")
-                    continue
+            except Exception as e:
+                print(f"[OPERATOR] ⚠️ Error processing fixture {fixture_data.get('id')}: {str(e)}")
+                continue
 
         print(f"[OPERATOR] 🎯 Returning {len(truly_live_matches)} truly live matches")
 
