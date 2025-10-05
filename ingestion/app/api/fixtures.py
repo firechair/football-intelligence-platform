@@ -297,17 +297,17 @@ async def get_live_fixtures(
             league_data = fixture.get('league', {})
             fixture_id = fixture_data.get('id')
 
-            # Recupera quote dal database per questa partita
+            # Recupera quote per questa partita (database -> API fallback)
             best_odds = {}
             if fixture_id:
                 try:
-                    # Cerca le quote più recenti per questa partita
+                    # Prima cerca nel database
                     odds_records = db.query(ExtendedOddsHistory).filter(
                         ExtendedOddsHistory.fixture_id == fixture_id
                     ).order_by(ExtendedOddsHistory.created_at.desc()).limit(10).all()
 
                     if odds_records:
-                        print(f"[OPERATOR] 💰 Found {len(odds_records)} odds records for fixture {fixture_id}")
+                        print(f"[OPERATOR] 💰 Found {len(odds_records)} odds records in DB for fixture {fixture_id}")
                         # Organizza le quote per bookmaker e tipo
                         for odds_record in odds_records:
                             bookmaker_name = odds_record.bookmaker_name or "Unknown"
@@ -322,7 +322,36 @@ async def get_live_fixtures(
                             if odds_record.away_win_odds:
                                 best_odds[bookmaker_name]["2"] = float(odds_record.away_win_odds)
                     else:
-                        print(f"[OPERATOR] ⚠️ No odds found in DB for fixture {fixture_id}")
+                        print(f"[OPERATOR] ⚠️ No odds in DB for fixture {fixture_id}, trying API fallback...")
+                        # Fallback: recupera quote direttamente dall'API-Football
+                        try:
+                            odds_data = await football_api.get_odds_for_fixture(fixture_id)
+                            if odds_data and len(odds_data) > 0:
+                                print(f"[OPERATOR] 📡 Got odds from API for fixture {fixture_id}")
+                                # Salva le quote nel database per future richieste
+                                await _save_odds_to_database(odds_data, fixture_id, db)
+
+                                # Organizza le quote come dal database
+                                for bookmaker_data in odds_data:
+                                    bookmaker_name = bookmaker_data.get('bookmaker', {}).get('name', 'Unknown')
+                                    if bookmaker_name not in best_odds:
+                                        best_odds[bookmaker_name] = {}
+
+                                    odds_values = bookmaker_data.get('bets', [{}])[0].get('values', [])
+                                    for odd_info in odds_values:
+                                        odd_value = odd_info.get('odd', '')
+                                        value_type = odd_info.get('value', '')
+
+                                        if value_type == '1' and odd_value:
+                                            best_odds[bookmaker_name]["1"] = float(odd_value)
+                                        elif value_type == 'X' and odd_value:
+                                            best_odds[bookmaker_name]["X"] = float(odd_value)
+                                        elif value_type == '2' and odd_value:
+                                            best_odds[bookmaker_name]["2"] = float(odd_value)
+                            else:
+                                print(f"[OPERATOR] ⚠️ No odds available from API for fixture {fixture_id}")
+                        except Exception as api_error:
+                            print(f"[OPERATOR] ⚠️ Error getting odds from API for fixture {fixture_id}: {str(api_error)}")
 
                 except Exception as e:
                     print(f"[OPERATOR] ⚠️ Error retrieving odds for fixture {fixture_id}: {str(e)}")
@@ -351,6 +380,63 @@ async def get_live_fixtures(
         import traceback
         traceback.print_exc()
         return []
+
+async def _save_odds_to_database(odds_data: List[Dict[str, Any]], fixture_id: int, db: Session):
+    """Salva le quote nel database per future richieste"""
+    try:
+        from datetime import datetime
+        for bookmaker_data in odds_data:
+            bookmaker_id = bookmaker_data.get('bookmaker', {}).get('id')
+            bookmaker_name = bookmaker_data.get('bookmaker', {}).get('name', 'Unknown')
+
+            # Trova o crea il bookmaker
+            bookmaker_record = db.query(BookmakerInfo).filter(
+                BookmakerInfo.bookmaker_id == bookmaker_id
+            ).first()
+
+            if not bookmaker_record:
+                bookmaker_record = BookmakerInfo(
+                    bookmaker_id=bookmaker_id,
+                    name=bookmaker_name
+                )
+                db.add(bookmaker_record)
+                db.commit()
+
+            # Salva le quote
+            bets = bookmaker_data.get('bets', [])
+            for bet in bets:
+                if bet.get('name') == 'Match Winner':  # 1X2 odds
+                    values = bet.get('values', [])
+                    home_win = draw = away_win = None
+
+                    for value in values:
+                        val_type = value.get('value')
+                        odd_val = value.get('odd')
+                        if val_type == '1' and odd_val:
+                            home_win = float(odd_val)
+                        elif val_type == 'X' and odd_val:
+                            draw = float(odd_val)
+                        elif val_type == '2' and odd_val:
+                            away_win = float(odd_val)
+
+                    if home_win or draw or away_win:
+                        odds_record = ExtendedOddsHistory(
+                            fixture_id=fixture_id,
+                            bookmaker_id=bookmaker_id,
+                            bookmaker_name=bookmaker_name,
+                            home_win_odds=home_win,
+                            draw_odds=draw,
+                            away_win_odds=away_win,
+                            created_at=datetime.utcnow()
+                        )
+                        db.add(odds_record)
+
+        db.commit()
+        print(f"[OPERATOR] 💾 Saved odds to database for fixture {fixture_id}")
+
+    except Exception as e:
+        print(f"[OPERATOR] ⚠️ Error saving odds to database for fixture {fixture_id}: {str(e)}")
+        db.rollback()
 
 async def _convert_api_fixture_to_frontend(api_fixture: Dict[str, Any], db: Session) -> FixtureResponse:
     """Converte dati fixture dall'API direttamente in formato frontend"""
