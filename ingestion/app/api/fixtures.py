@@ -278,14 +278,13 @@ async def get_live_fixtures(
     force_refresh: bool = Query(False, description="Force cache refresh"),
     db: Session = Depends(get_db)
 ):
-    """🔴 Partite REALMENTE LIVE - cerca attivamente partite live dall'API e le integra nel sistema"""
+    """🔴 Partite REALMENTE LIVE - versione semplificata per debug"""
 
     # 🔴 CACHE: Import necessario per cache
     from app.services.cache_service import get_live_fixtures_cache_key
     from app.services.fixtures_collector import fixtures_collector
-    from app.services.odds_collector import odds_collector
 
-    # 🔴 CACHE: Prova a recuperare dalla cache (TTL 10s per live - più lungo per ridurre chiamate API)
+    # 🔴 CACHE: Prova a recuperare dalla cache (TTL 30s per debug)
     cache_key = get_live_fixtures_cache_key()
     cached_response = cache_service.get(cache_key)
     if cached_response and not force_refresh:
@@ -294,62 +293,102 @@ async def get_live_fixtures(
     elif force_refresh:
         print(f"[OPERATOR] 🔄 Force refresh requested - bypassing cache")
 
-    print(f"[OPERATOR] ❌ Cache MISS - Actively searching for TRULY live fixtures from API")
+    print(f"[OPERATOR] ❌ Cache MISS - Getting live fixtures from API")
 
     try:
-        # 1. CERCA ATTIVAMENTE partite live dall'API
+        # Versione semplificata: prendi partite live dall'API e restituiscile direttamente
         live_fixtures_from_api = await fixtures_collector.collect_live_fixtures()
 
-        # 2. INTEGRA nuove partite live nel database (se non esistono già)
-        if live_fixtures_from_api:
-            await fixtures_collector.update_tracking_status(live_fixtures_from_api, db)
-            print(f"[OPERATOR] 📝 Integrated {len(live_fixtures_from_api)} live fixtures into database")
+        print(f"[OPERATOR] 📡 Got {len(live_fixtures_from_api)} live fixtures from API")
 
-            # 3. RACCOGLI quote per queste partite live appena scoperte
-            live_fixture_ids = [f.get('fixture', {}).get('id') for f in live_fixtures_from_api if f.get('fixture', {}).get('id')]
-            if live_fixture_ids:
-                print(f"[OPERATOR] 💰 Collecting odds for {len(live_fixture_ids)} newly discovered live fixtures")
-                await odds_collector.collect_odds_for_fixtures(live_fixture_ids, db)
-
-        # 4. RESTITUISCI partite live dal database (quelle appena aggiunte + eventuali esistenti)
-        now = datetime.now()
-
-        # Trova tutte le partite che sono davvero live nel database
-        # Include quelle appena aggiunte dall'API + quelle esistenti che sono live
-        live_fixtures_in_db = db.query(FixtureTrackingStatus).filter(
-            and_(
-                FixtureTrackingStatus.tracking_status.in_(["live", "active"]),
-                FixtureTrackingStatus.tracking_status != "completed"
-            )
-        ).order_by(FixtureTrackingStatus.fixture_date.desc()).limit(limit).all()
-
-        # Filtro finale per partite davvero live
+        # Converti direttamente in formato frontend (senza salvare nel DB per ora)
         truly_live_matches = []
-        for fixture in live_fixtures_in_db:
-            match_time = fixture.fixture_date
-            time_since_start = (now - match_time).total_seconds() / 60  # minuti
+        for fixture in live_fixtures_from_api[:limit]:  # Limita risultati
+            try:
+                fixture_data = await _convert_api_fixture_to_frontend(fixture, db)
+                truly_live_matches.append(fixture_data)
+            except Exception as e:
+                print(f"[OPERATOR] ❌ Error converting fixture {fixture.get('fixture', {}).get('id')}: {str(e)}")
+                continue
 
-            # Controllo rigoroso: partita deve essere iniziata e non finita
-            if time_since_start >= -5 and time_since_start <= 150:  # Max 5 min anticipo, max 2.5 ore durata
-                try:
-                    fixture_data = await _build_fixture_response(fixture, db)
-                    truly_live_matches.append(fixture_data)
-                    print(f"[OPERATOR] ✅ LIVE: {fixture.fixture_id} ({fixture.home_team} vs {fixture.away_team}) - started {time_since_start:.0f} min ago")
-                except Exception as e:
-                    print(f"[OPERATOR] ❌ Error building live fixture {fixture.fixture_id}: {str(e)}")
-                    continue
+        print(f"[OPERATOR] 🎯 Returning {len(truly_live_matches)} live matches directly from API")
 
-        print(f"[OPERATOR] 🎯 Found and returning {len(truly_live_matches)} TRULY live matches from API + DB")
-
-        # 🔴 CACHE: Salva in cache per 10 secondi (più lungo per ridurre stress API)
-        cache_service.set(cache_key, truly_live_matches, ttl_seconds=10)
-        print(f"[OPERATOR] 💾 Cached {len(truly_live_matches)} truly live fixtures (10s TTL)")
+        # 🔴 CACHE: Salva in cache per 30 secondi
+        cache_service.set(cache_key, truly_live_matches, ttl_seconds=30)
+        print(f"[OPERATOR] 💾 Cached {len(truly_live_matches)} live fixtures (30s TTL)")
 
         return truly_live_matches
 
     except Exception as e:
         print(f"[OPERATOR] ❌ Error in get_live_fixtures: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return []
+
+async def _convert_api_fixture_to_frontend(api_fixture: Dict[str, Any], db: Session) -> FixtureResponse:
+    """Converte dati fixture dall'API direttamente in formato frontend"""
+    fixture_data = api_fixture.get('fixture', {})
+    league_data = api_fixture.get('league', {})
+    teams_data = api_fixture.get('teams', {})
+    goals_data = api_fixture.get('goals', {})
+    score_data = api_fixture.get('score', {})
+
+    # Converti data
+    fixture_date = datetime.fromisoformat(fixture_data.get('date', '').replace('Z', '+00:00'))
+
+    # Loghi squadre
+    home_logo = get_team_logo_url(teams_data.get('home', {}).get('name'), teams_data.get('home', {}).get('logo'))
+    away_logo = get_team_logo_url(teams_data.get('away', {}).get('name'), teams_data.get('away', {}).get('logo'))
+    league_logo = get_league_logo_url(league_data.get('name'), league_data.get('logo'))
+
+    # Ottieni quote per questa partita (se disponibili)
+    fixture_id = fixture_data.get('id')
+    best_odds = {}
+
+    if fixture_id:
+        try:
+            # Prova a ottenere quote dall'API
+            from app.utils.football_api import football_api
+            odds_data = await football_api.get_odds_for_fixture(fixture_id)
+            if odds_data:
+                # Estrai quote 1X2
+                for bookmaker_data in odds_data:
+                    bookmaker_name = bookmaker_data.get('bookmaker', {}).get('name', '')
+                    odds_values = bookmaker_data.get('bets', [{}])[0].get('values', [])
+
+                    for odd_info in odds_values:
+                        odd_value = odd_info.get('odd', '')
+                        value_type = odd_info.get('value', '')
+
+                        if value_type == '1':
+                            if '1' not in best_odds:
+                                best_odds['1'] = {}
+                            best_odds['1'][bookmaker_name] = float(odd_value) if odd_value else 0
+                        elif value_type == 'X':
+                            if 'X' not in best_odds:
+                                best_odds['X'] = {}
+                            best_odds['X'][bookmaker_name] = float(odd_value) if odd_value else 0
+                        elif value_type == '2':
+                            if '2' not in best_odds:
+                                best_odds['2'] = {}
+                            best_odds['2'][bookmaker_name] = float(odd_value) if odd_value else 0
+        except Exception as e:
+            print(f"[OPERATOR] ⚠️ Could not get odds for fixture {fixture_id}: {str(e)}")
+
+    return FixtureResponse(
+        fixture_id=fixture_id,
+        home_team=teams_data.get('home', {}).get('name', 'Unknown'),
+        away_team=teams_data.get('away', {}).get('name', 'Unknown'),
+        home_team_logo=home_logo,
+        away_team_logo=away_logo,
+        fixture_date=fixture_date,
+        league_id=league_data.get('id'),
+        league_name=league_data.get('name', 'Unknown League'),
+        country_name=league_data.get('country'),
+        league_logo=league_logo,
+        best_odds=best_odds,
+        prediction=None  # Non carichiamo predizioni per live matches
+    )
 
 @router.get("/upcoming", response_model=List[FixtureResponse])
 async def get_upcoming_fixtures(
