@@ -367,20 +367,24 @@ async def get_live_fixtures(
                 }
                 print(f"[OPERATOR] 🧪 Added test odds for fixture {fixture_id}")
 
-            # Crea oggetto semplificato con quote
-            match = {
-                "fixture_id": fixture_id,
-                "home_team": teams_data.get('home', {}).get('name', 'Unknown'),
-                "away_team": teams_data.get('away', {}).get('name', 'Unknown'),
-                "league_name": league_data.get('name', 'Unknown League'),
-                "country_name": league_data.get('country'),
-                "fixture_date": fixture_data.get('date'),
-                "best_odds": best_odds,  # Quote dal database o test
-                "home_team_logo": "",
-                "away_team_logo": "",
-                "league_logo": "",
-                "prediction": None
-            }
+            # Crea oggetto FixtureResponse completo
+            from datetime import datetime
+            fixture_date_obj = datetime.fromisoformat(fixture_data.get('date', '').replace('Z', '+00:00'))
+
+            match = FixtureResponse(
+                fixture_id=fixture_id,
+                home_team=teams_data.get('home', {}).get('name', 'Unknown'),
+                away_team=teams_data.get('away', {}).get('name', 'Unknown'),
+                home_team_logo="",
+                away_team_logo="",
+                fixture_date=fixture_date_obj,
+                league_id=league_data.get('id'),
+                league_name=league_data.get('name', 'Unknown League'),
+                country_name=league_data.get('country'),
+                league_logo="",
+                best_odds=best_odds,  # Quote dal database o test
+                prediction=None
+            )
             live_matches.append(match)
 
         print(f"[OPERATOR] 🎯 Returning {len(live_matches)} live matches with odds from DB")
