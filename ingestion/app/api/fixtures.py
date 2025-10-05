@@ -341,39 +341,9 @@ async def _convert_api_fixture_to_frontend(api_fixture: Dict[str, Any], db: Sess
     away_logo = get_team_logo_url(teams_data.get('away', {}).get('name'), teams_data.get('away', {}).get('logo'))
     league_logo = get_league_logo_url(league_data.get('name'), league_data.get('logo'))
 
-    # Ottieni quote per questa partita (se disponibili)
-    fixture_id = fixture_data.get('id')
+    # Per ora saltiamo le quote per debug - restituiamo partite senza quote
     best_odds = {}
-
-    if fixture_id:
-        try:
-            # Prova a ottenere quote dall'API
-            from app.utils.football_api import football_api
-            odds_data = await football_api.get_odds_for_fixture(fixture_id)
-            if odds_data:
-                # Estrai quote 1X2
-                for bookmaker_data in odds_data:
-                    bookmaker_name = bookmaker_data.get('bookmaker', {}).get('name', '')
-                    odds_values = bookmaker_data.get('bets', [{}])[0].get('values', [])
-
-                    for odd_info in odds_values:
-                        odd_value = odd_info.get('odd', '')
-                        value_type = odd_info.get('value', '')
-
-                        if value_type == '1':
-                            if '1' not in best_odds:
-                                best_odds['1'] = {}
-                            best_odds['1'][bookmaker_name] = float(odd_value) if odd_value else 0
-                        elif value_type == 'X':
-                            if 'X' not in best_odds:
-                                best_odds['X'] = {}
-                            best_odds['X'][bookmaker_name] = float(odd_value) if odd_value else 0
-                        elif value_type == '2':
-                            if '2' not in best_odds:
-                                best_odds['2'] = {}
-                            best_odds['2'][bookmaker_name] = float(odd_value) if odd_value else 0
-        except Exception as e:
-            print(f"[OPERATOR] ⚠️ Could not get odds for fixture {fixture_id}: {str(e)}")
+    # TODO: Riaggiungere quote dopo aver risolto il problema di timeout
 
     return FixtureResponse(
         fixture_id=fixture_id,
