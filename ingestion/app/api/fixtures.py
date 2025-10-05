@@ -275,8 +275,7 @@ async def get_fixtures_by_date_range(
 @router.get("/live", response_model=List[FixtureResponse])
 async def get_live_fixtures(
     limit: int = Query(50, ge=1, le=100, description="Max live fixtures to return"),
-    force_refresh: bool = Query(False, description="Force cache refresh"),
-    db: Session = Depends(get_db)
+    force_refresh: bool = Query(False, description="Force cache refresh")
 ):
     """🔴 Partite REALMENTE LIVE - versione di emergenza"""
     print(f"[OPERATOR] 🚨 Emergency live fixtures endpoint called")
