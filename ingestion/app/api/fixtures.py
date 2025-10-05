@@ -275,18 +275,86 @@ async def get_fixtures_by_date_range(
 @router.get("/live", response_model=List[FixtureResponse])
 async def get_live_fixtures(
     limit: int = Query(50, ge=1, le=100, description="Max live fixtures to return"),
-    force_refresh: bool = Query(False, description="Force cache refresh")
+    force_refresh: bool = Query(False, description="Force cache refresh"),
+    db: Session = Depends(get_db)
 ):
-    """🔴 Partite REALMENTE LIVE - versione di emergenza"""
-    print(f"[OPERATOR] 🚨 Emergency live fixtures endpoint called")
+    """🔴 Partite REALMENTE LIVE - versione funzionante"""
+    print(f"[OPERATOR] 🔴 Live fixtures endpoint called")
 
     try:
-        # Test minimo: restituisci lista vuota per verificare che l'endpoint risponde
-        print(f"[OPERATOR] 🚨 Returning empty list")
-        return []
+        # Import necessari
+        from app.services.cache_service import get_live_fixtures_cache_key
+        from app.utils.football_api import football_api
+        from datetime import datetime
+
+        # Cache check
+        cache_key = get_live_fixtures_cache_key()
+        cached_response = cache_service.get(cache_key)
+        if cached_response and not force_refresh:
+            print(f"[OPERATOR] 🎯 Cache HIT for live fixtures")
+            return cached_response
+
+        print(f"[OPERATOR] ❌ Cache MISS - Getting live fixtures from API")
+
+        # Ottieni partite live dall'API
+        live_fixtures_from_api = await football_api.get_live_fixtures()
+        print(f"[OPERATOR] 📡 Got {len(live_fixtures_from_api)} fixtures from API")
+
+        # Filtro partite davvero live
+        now = datetime.now()
+        truly_live_matches = []
+
+        for fixture in live_fixtures_from_api[:limit]:
+            fixture_data = fixture.get('fixture', {})
+            teams_data = fixture.get('teams', {})
+            league_data = fixture.get('league', {})
+            status = fixture_data.get('status', {})
+
+            # Verifica se è davvero live
+            fixture_date_str = fixture_data.get('date')
+            if fixture_date_str:
+                try:
+                    fixture_date = datetime.fromisoformat(fixture_date_str.replace('Z', '+00:00'))
+                    time_since_start = (now - fixture_date).total_seconds() / 60
+                    live_statuses = ['1H', 'HT', '2H', 'ET', 'BT', 'P', 'LIVE', 'IN_PLAY', 'PLAYING']
+                    is_status_live = status.get('short') in live_statuses
+                    is_temporally_live = time_since_start >= -5 and time_since_start <= 150
+
+                    if is_status_live and is_temporally_live:
+                        # Converti in FixtureResponse
+                        match_response = FixtureResponse(
+                            fixture_id=fixture_data.get('id'),
+                            home_team=teams_data.get('home', {}).get('name', 'Unknown'),
+                            away_team=teams_data.get('away', {}).get('name', 'Unknown'),
+                            home_team_logo=get_team_logo_url(teams_data.get('home', {}).get('name'), teams_data.get('home', {}).get('logo')),
+                            away_team_logo=get_team_logo_url(teams_data.get('away', {}).get('name'), teams_data.get('away', {}).get('logo')),
+                            fixture_date=fixture_date,
+                            league_id=league_data.get('id'),
+                            league_name=league_data.get('name', 'Unknown League'),
+                            country_name=league_data.get('country'),
+                            league_logo=get_league_logo_url(league_data.get('name'), league_data.get('logo')),
+                            best_odds={},  # Per ora senza quote
+                            prediction=None
+                        )
+                        truly_live_matches.append(match_response)
+                        print(f"[OPERATOR] ✅ LIVE: {match_response.home_team} vs {match_response.away_team} ({status.get('short')})")
+
+                except Exception as e:
+                    print(f"[OPERATOR] ⚠️ Error processing fixture {fixture_data.get('id')}: {str(e)}")
+                    continue
+
+        print(f"[OPERATOR] 🎯 Returning {len(truly_live_matches)} truly live matches")
+
+        # Cache per 30 secondi
+        cache_service.set(cache_key, truly_live_matches, ttl_seconds=30)
+        print(f"[OPERATOR] 💾 Cached {len(truly_live_matches)} live fixtures (30s TTL)")
+
+        return truly_live_matches
 
     except Exception as e:
-        print(f"[OPERATOR] ❌ Emergency endpoint failed: {str(e)}")
+        print(f"[OPERATOR] ❌ Error in get_live_fixtures: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return []
 
 async def _convert_api_fixture_to_frontend(api_fixture: Dict[str, Any], db: Session) -> FixtureResponse:
