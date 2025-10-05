@@ -272,7 +272,7 @@ async def get_fixtures_by_date_range(
     
     return response
 
-@router.get("/live")
+@router.get("/live", response_model=List[Dict[str, Any]])
 async def get_live_fixtures(
     limit: int = Query(50, ge=1, le=100, description="Max live fixtures to return"),
     force_refresh: bool = Query(False, description="Force cache refresh"),
@@ -367,24 +367,21 @@ async def get_live_fixtures(
                 }
                 print(f"[OPERATOR] 🧪 Added test odds for fixture {fixture_id}")
 
-            # Crea oggetto FixtureResponse completo
-            from datetime import datetime
-            fixture_date_obj = datetime.fromisoformat(fixture_data.get('date', '').replace('Z', '+00:00'))
-
-            match = FixtureResponse(
-                fixture_id=fixture_id,
-                home_team=teams_data.get('home', {}).get('name', 'Unknown'),
-                away_team=teams_data.get('away', {}).get('name', 'Unknown'),
-                home_team_logo="",
-                away_team_logo="",
-                fixture_date=fixture_date_obj,
-                league_id=league_data.get('id'),
-                league_name=league_data.get('name', 'Unknown League'),
-                country_name=league_data.get('country'),
-                league_logo="",
-                best_odds=best_odds,  # Quote dal database o test
-                prediction=None
-            )
+            # Crea dizionario serializzabile per il frontend
+            match = {
+                "fixture_id": fixture_id,
+                "home_team": teams_data.get('home', {}).get('name', 'Unknown'),
+                "away_team": teams_data.get('away', {}).get('name', 'Unknown'),
+                "home_team_logo": "",
+                "away_team_logo": "",
+                "fixture_date": fixture_data.get('date'),
+                "league_id": league_data.get('id'),
+                "league_name": league_data.get('name', 'Unknown League'),
+                "country_name": league_data.get('country'),
+                "league_logo": "",
+                "best_odds": best_odds,  # Quote dal database o test
+                "prediction": None
+            }
             live_matches.append(match)
 
         print(f"[OPERATOR] 🎯 Returning {len(live_matches)} live matches with odds from DB")
