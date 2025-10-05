@@ -356,30 +356,24 @@ async def get_live_fixtures(
                 except Exception as e:
                     print(f"[OPERATOR] ⚠️ Error retrieving odds for fixture {fixture_id}: {str(e)}")
 
-            # Debug: aggiungi quote fittizie se non ci sono quote reali
-            if not best_odds:
-                best_odds = {
-                    "TestBookie": {
-                        "1": 2.1,
-                        "X": 3.2,
-                        "2": 3.5
-                    }
-                }
-                print(f"[OPERATOR] 🧪 Added test odds for fixture {fixture_id}")
+            # Usa le funzioni per recuperare i loghi correttamente
+            home_logo = get_team_logo_url(teams_data.get('home', {}).get('name'), teams_data.get('home', {}).get('logo'))
+            away_logo = get_team_logo_url(teams_data.get('away', {}).get('name'), teams_data.get('away', {}).get('logo'))
+            league_logo = get_league_logo_url(league_data.get('name'), league_data.get('logo'))
 
             # Crea dizionario serializzabile per il frontend
             match = {
                 "fixture_id": fixture_id,
                 "home_team": teams_data.get('home', {}).get('name', 'Unknown'),
                 "away_team": teams_data.get('away', {}).get('name', 'Unknown'),
-                "home_team_logo": "",
-                "away_team_logo": "",
+                "home_team_logo": home_logo or "",
+                "away_team_logo": away_logo or "",
                 "fixture_date": fixture_data.get('date'),
                 "league_id": league_data.get('id'),
                 "league_name": league_data.get('name', 'Unknown League'),
                 "country_name": league_data.get('country'),
-                "league_logo": "",
-                "best_odds": best_odds,  # Quote dal database o test
+                "league_logo": league_logo or "",
+                "best_odds": best_odds,  # Solo quote reali dal database/API
                 "prediction": None
             }
             live_matches.append(match)
