@@ -356,6 +356,17 @@ async def get_live_fixtures(
                 except Exception as e:
                     print(f"[OPERATOR] ⚠️ Error retrieving odds for fixture {fixture_id}: {str(e)}")
 
+            # Debug: aggiungi quote fittizie se non ci sono quote reali
+            if not best_odds:
+                best_odds = {
+                    "TestBookie": {
+                        "1": 2.1,
+                        "X": 3.2,
+                        "2": 3.5
+                    }
+                }
+                print(f"[OPERATOR] 🧪 Added test odds for fixture {fixture_id}")
+
             # Crea oggetto semplificato con quote
             match = {
                 "fixture_id": fixture_id,
@@ -364,7 +375,7 @@ async def get_live_fixtures(
                 "league_name": league_data.get('name', 'Unknown League'),
                 "country_name": league_data.get('country'),
                 "fixture_date": fixture_data.get('date'),
-                "best_odds": best_odds,  # Quote dal database
+                "best_odds": best_odds,  # Quote dal database o test
                 "home_team_logo": "",
                 "away_team_logo": "",
                 "league_logo": "",
