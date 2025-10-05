@@ -324,52 +324,64 @@ async def get_live_fixtures(
                         print(f"[OPERATOR] ✅ Loaded odds from DB for fixture {fixture_id}")
                     else:
                         print(f"[OPERATOR] ⚠️ No odds in DB for fixture {fixture_id}, fetching from API...")
-                        # Recupera direttamente dall'API
+                        # Recupera direttamente dall'API con chiamata HTTP diretta
                         try:
-                            print(f"[OPERATOR] 🌐 Calling API for fixture {fixture_id}...")
-                            odds_data = await football_api.get_odds_for_fixture(fixture_id)
-                            print(f"[OPERATOR] 📡 API response for {fixture_id}: {len(odds_data) if odds_data else 0} bookmakers")
+                            import httpx
+                            print(f"[OPERATOR] 🌐 Direct HTTP call to API-Football for fixture {fixture_id}...")
 
-                            if odds_data and len(odds_data) > 0:
-                                # Prendi il primo bookmaker disponibile
-                                bookmaker_data = odds_data[0]  # Prendi il primo
-                                bookmaker_name = bookmaker_data.get('bookmaker', {}).get('name', 'Bookie')
-                                bets = bookmaker_data.get('bets', [])
+                            api_key = "REDACTED"
+                            url = f"https://v3.football.api-sports.io/odds?fixture={fixture_id}"
 
-                                print(f"[OPERATOR] 📊 Processing bookmaker: {bookmaker_name}")
+                            async with httpx.AsyncClient(timeout=10.0) as client:
+                                response = await client.get(url, headers={"x-apisports-key": api_key})
 
-                                for bet in bets:
-                                    if bet.get('name') == 'Match Winner':
-                                        values = bet.get('values', [])
-                                        print(f"[OPERATOR] 🎯 Found Match Winner bet with {len(values)} values")
+                                if response.status_code == 200:
+                                    data = response.json()
+                                    odds_data = data.get('response', [])
+                                    print(f"[OPERATOR] 📡 Direct API response for {fixture_id}: {len(odds_data)} bookmakers")
 
-                                        for value in values:
-                                            val_type = value.get('value')
-                                            odd_val = value.get('odd')
+                                    if odds_data and len(odds_data) > 0:
+                                        # Prendi il primo bookmaker
+                                        bookmaker_data = odds_data[0]
+                                        bookmaker_name = bookmaker_data.get('bookmaker', {}).get('name', 'Bookie')
+                                        bets = bookmaker_data.get('bets', [])
 
-                                            if val_type and odd_val:
-                                                if bookmaker_name not in best_odds:
-                                                    best_odds[bookmaker_name] = {}
+                                        print(f"[OPERATOR] 📊 Processing bookmaker: {bookmaker_name}")
 
-                                                if val_type == '1':
-                                                    best_odds[bookmaker_name]["1"] = float(odd_val)
-                                                elif val_type == 'X':
-                                                    best_odds[bookmaker_name]["X"] = float(odd_val)
-                                                elif val_type == '2':
-                                                    best_odds[bookmaker_name]["2"] = float(odd_val)
+                                        for bet in bets:
+                                            if bet.get('name') == 'Match Winner':
+                                                values = bet.get('values', [])
+                                                print(f"[OPERATOR] 🎯 Found Match Winner with {len(values)} values")
 
-                                print(f"[OPERATOR] ✅ Parsed odds for fixture {fixture_id}: {best_odds}")
+                                                for value in values:
+                                                    val_type = value.get('value')
+                                                    odd_val = value.get('odd')
 
-                                # Salva nel database per future richieste
-                                if best_odds:
-                                    try:
-                                        await _save_odds_to_database(odds_data, fixture_id, db)
-                                        print(f"[OPERATOR] 💾 Saved odds to database for fixture {fixture_id}")
-                                    except Exception as save_error:
-                                        print(f"[OPERATOR] ⚠️ Error saving to DB: {str(save_error)}")
+                                                    if val_type and odd_val:
+                                                        if bookmaker_name not in best_odds:
+                                                            best_odds[bookmaker_name] = {}
+
+                                                        if val_type == '1':
+                                                            best_odds[bookmaker_name]["1"] = float(odd_val)
+                                                        elif val_type == 'X':
+                                                            best_odds[bookmaker_name]["X"] = float(odd_val)
+                                                        elif val_type == '2':
+                                                            best_odds[bookmaker_name]["2"] = float(odd_val)
+
+                                        print(f"[OPERATOR] ✅ Final odds for fixture {fixture_id}: {best_odds}")
+
+                                        # Salva nel database
+                                        if best_odds:
+                                            try:
+                                                await _save_odds_to_database(odds_data, fixture_id, db)
+                                                print(f"[OPERATOR] 💾 Saved to database")
+                                            except Exception as save_error:
+                                                print(f"[OPERATOR] ⚠️ Save error: {str(save_error)}")
+                                else:
+                                    print(f"[OPERATOR] ❌ API returned status {response.status_code}")
 
                         except Exception as api_error:
-                            print(f"[OPERATOR] 💥 API Error for fixture {fixture_id}: {str(api_error)}")
+                            print(f"[OPERATOR] 💥 Direct API Error for fixture {fixture_id}: {str(api_error)}")
 
                 except Exception as e:
                     print(f"[OPERATOR] ❌ General error for fixture {fixture_id}: {str(e)}")
