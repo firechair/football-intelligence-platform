@@ -323,26 +323,54 @@ async def get_live_fixtures(
             league_data = fixture.get('league', {})
             fixture_id = fixture_data.get('id')
 
-            # RECUPERA SOLO QUOTE SALVATE NEL DATABASE (da quando erano future)
+            # RECUPERA TUTTE LE QUOTE SALVATE NEL DATABASE (da quando erano future)
             best_odds = {}
 
             try:
+                # Prendi TUTTE le quote per questo fixture (non limitare a 3!)
                 odds_records = db.query(ExtendedOddsHistory).filter(
                     ExtendedOddsHistory.fixture_id == fixture_id
-                ).order_by(ExtendedOddsHistory.created_at.desc()).limit(3).all()
+                ).all()
 
                 if odds_records and len(odds_records) > 0:
+                    # Aggrega le migliori quote per ogni mercato (1, X, 2)
+                    best_home_odds = {}
+                    best_draw_odds = {}
+                    best_away_odds = {}
+
                     for odds_record in odds_records:
                         bookmaker_name = odds_record.bookmaker_name or "Bookie"
-                        if bookmaker_name not in best_odds:
-                            best_odds[bookmaker_name] = {}
 
                         if odds_record.home_win_odds:
-                            best_odds[bookmaker_name]["1"] = float(odds_record.home_win_odds)
+                            if bookmaker_name not in best_home_odds or odds_record.home_win_odds < best_home_odds[bookmaker_name]:
+                                best_home_odds[bookmaker_name] = float(odds_record.home_win_odds)
+
                         if odds_record.draw_odds:
-                            best_odds[bookmaker_name]["X"] = float(odds_record.draw_odds)
+                            if bookmaker_name not in best_draw_odds or odds_record.draw_odds < best_draw_odds[bookmaker_name]:
+                                best_draw_odds[bookmaker_name] = float(odds_record.draw_odds)
+
                         if odds_record.away_win_odds:
-                            best_odds[bookmaker_name]["2"] = float(odds_record.away_win_odds)
+                            if bookmaker_name not in best_away_odds or odds_record.away_win_odds < best_away_odds[bookmaker_name]:
+                                best_away_odds[bookmaker_name] = float(odds_record.away_win_odds)
+
+                    # Crea struttura finale con il primo bookmaker disponibile per ogni mercato
+                    if best_home_odds:
+                        first_bookmaker = next(iter(best_home_odds.keys()))
+                        best_odds[first_bookmaker] = {}
+                        best_odds[first_bookmaker]["1"] = best_home_odds[first_bookmaker]
+
+                    if best_draw_odds:
+                        first_bookmaker = next(iter(best_draw_odds.keys()))
+                        if first_bookmaker not in best_odds:
+                            best_odds[first_bookmaker] = {}
+                        best_odds[first_bookmaker]["X"] = best_draw_odds[first_bookmaker]
+
+                    if best_away_odds:
+                        first_bookmaker = next(iter(best_away_odds.keys()))
+                        if first_bookmaker not in best_odds:
+                            best_odds[first_bookmaker] = {}
+                        best_odds[first_bookmaker]["2"] = best_away_odds[first_bookmaker]
+
             except Exception as db_error:
                 print(f"[OPERATOR] Database error for fixture {fixture_id}: {str(db_error)}")
 
