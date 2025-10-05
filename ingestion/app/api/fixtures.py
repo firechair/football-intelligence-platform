@@ -357,20 +357,29 @@ async def get_live_fixtures(
                     print(f"[OPERATOR] ⚠️ Error retrieving odds for fixture {fixture_id}: {str(e)}")
 
             # Usa le funzioni per recuperare i loghi correttamente
-            home_logo = get_team_logo_url(teams_data.get('home', {}).get('name'), teams_data.get('home', {}).get('logo'))
-            away_logo = get_team_logo_url(teams_data.get('away', {}).get('name'), teams_data.get('away', {}).get('logo'))
-            league_logo = get_league_logo_url(league_data.get('name'), league_data.get('logo'))
+            home_team_name = teams_data.get('home', {}).get('name', 'Unknown')
+            away_team_name = teams_data.get('away', {}).get('name', 'Unknown')
+            league_name = league_data.get('name', 'Unknown League')
+
+            # Per le partite live, usa direttamente i loghi dall'API-Football se disponibili
+            home_api_logo = teams_data.get('home', {}).get('logo')
+            away_api_logo = teams_data.get('away', {}).get('logo')
+            league_api_logo = league_data.get('logo')
+
+            home_logo = get_team_logo_url(home_team_name, home_api_logo) if home_api_logo else get_team_logo_url(home_team_name)
+            away_logo = get_team_logo_url(away_team_name, away_api_logo) if away_api_logo else get_team_logo_url(away_team_name)
+            league_logo = get_league_logo_url(league_name, league_api_logo) if league_api_logo else get_league_logo_url(league_name)
 
             # Crea dizionario serializzabile per il frontend
             match = {
                 "fixture_id": fixture_id,
-                "home_team": teams_data.get('home', {}).get('name', 'Unknown'),
-                "away_team": teams_data.get('away', {}).get('name', 'Unknown'),
+                "home_team": home_team_name,
+                "away_team": away_team_name,
                 "home_team_logo": home_logo or "",
                 "away_team_logo": away_logo or "",
                 "fixture_date": fixture_data.get('date'),
                 "league_id": league_data.get('id'),
-                "league_name": league_data.get('name', 'Unknown League'),
+                "league_name": league_name,
                 "country_name": league_data.get('country'),
                 "league_logo": league_logo or "",
                 "best_odds": best_odds,  # Solo quote reali dal database/API
