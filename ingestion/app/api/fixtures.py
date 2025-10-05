@@ -358,56 +358,72 @@ async def get_live_fixtures(
                             api_key = "REDACTED"
                             url = f"https://v3.football.api-sports.io/odds?fixture={fixture_id}"
 
-                            async with httpx.AsyncClient(timeout=10.0) as client:
+                            async with httpx.AsyncClient(timeout=15.0) as client:
                                 response = await client.get(url, headers={"x-apisports-key": api_key})
+                                print(f"[OPERATOR] 🌐 HTTP Status for {fixture_id}: {response.status_code}")
 
                                 if response.status_code == 200:
-                                    data = response.json()
-                                    odds_data = data.get('response', [])
-                                    print(f"[OPERATOR] 📡 Direct API response for {fixture_id}: {len(odds_data)} bookmakers")
+                                    try:
+                                        data = response.json()
+                                        odds_data = data.get('response', [])
+                                        print(f"[OPERATOR] 📡 Direct API response for {fixture_id}: {len(odds_data)} bookmakers")
 
-                                    if odds_data and len(odds_data) > 0:
-                                        # Prendi il primo bookmaker disponibile
-                                        bookmaker_data = odds_data[0]
-                                        bookmaker_name = bookmaker_data.get('bookmaker', {}).get('name', 'Bookie')
-                                        bets = bookmaker_data.get('bets', [])
+                                        if odds_data and len(odds_data) > 0:
+                                            # Prendi il primo bookmaker disponibile
+                                            bookmaker_data = odds_data[0]
+                                            bookmaker_name = bookmaker_data.get('bookmaker', {}).get('name', 'Bookie')
+                                            bets = bookmaker_data.get('bets', [])
 
-                                        print(f"[OPERATOR] 📊 Processing bookmaker: {bookmaker_name}")
+                                            print(f"[OPERATOR] 📊 Processing bookmaker: {bookmaker_name}, bets: {len(bets)}")
 
-                                        for bet in bets:
-                                            if bet.get('name') == 'Match Winner':
-                                                values = bet.get('values', [])
-                                                print(f"[OPERATOR] 🎯 Found Match Winner with {len(values)} values")
+                                            for bet in bets:
+                                                bet_name = bet.get('name', '')
+                                                print(f"[OPERATOR] 🎯 Checking bet: {bet_name}")
+                                                if bet_name == 'Match Winner':
+                                                    values = bet.get('values', [])
+                                                    print(f"[OPERATOR] 🎯 Found Match Winner with {len(values)} values")
 
-                                                for value in values:
-                                                    val_type = value.get('value')
-                                                    odd_val = value.get('odd')
+                                                    for value in values:
+                                                        val_type = value.get('value')
+                                                        odd_val = value.get('odd')
+                                                        print(f"[OPERATOR] 🎯 Value: {val_type} = {odd_val}")
 
-                                                    if val_type and odd_val:
-                                                        if bookmaker_name not in best_odds:
-                                                            best_odds[bookmaker_name] = {}
+                                                        if val_type and odd_val:
+                                                            if bookmaker_name not in best_odds:
+                                                                best_odds[bookmaker_name] = {}
 
-                                                        if val_type == '1':
-                                                            best_odds[bookmaker_name]["1"] = float(odd_val)
-                                                        elif val_type == 'X':
-                                                            best_odds[bookmaker_name]["X"] = float(odd_val)
-                                                        elif val_type == '2':
-                                                            best_odds[bookmaker_name]["2"] = float(odd_val)
+                                                            if val_type == '1':
+                                                                best_odds[bookmaker_name]["1"] = float(odd_val)
+                                                            elif val_type == 'X':
+                                                                best_odds[bookmaker_name]["X"] = float(odd_val)
+                                                            elif val_type == '2':
+                                                                best_odds[bookmaker_name]["2"] = float(odd_val)
 
-                                        print(f"[OPERATOR] ✅ Final odds for fixture {fixture_id}: {best_odds}")
+                                            print(f"[OPERATOR] ✅ Final odds for fixture {fixture_id}: {best_odds}")
 
-                                        # Salva nel database per future richieste
-                                        if best_odds:
-                                            try:
-                                                await _save_odds_to_database(odds_data, fixture_id, db)
-                                                print(f"[OPERATOR] 💾 Saved odds to database")
-                                            except Exception as save_error:
-                                                print(f"[OPERATOR] ⚠️ Save error: {str(save_error)}")
+                                            # Salva nel database per future richieste
+                                            if best_odds:
+                                                try:
+                                                    await _save_odds_to_database(odds_data, fixture_id, db)
+                                                    print(f"[OPERATOR] 💾 Saved odds to database")
+                                                except Exception as save_error:
+                                                    print(f"[OPERATOR] ⚠️ Save error: {str(save_error)}")
+                                        else:
+                                            print(f"[OPERATOR] ⚠️ No odds data in API response for {fixture_id}")
+                                    except Exception as json_error:
+                                        print(f"[OPERATOR] 💥 JSON parsing error for {fixture_id}: {str(json_error)}")
                                 else:
-                                    print(f"[OPERATOR] ❌ API returned status {response.status_code}")
+                                    print(f"[OPERATOR] ❌ API returned status {response.status_code} for {fixture_id}")
+                                    try:
+                                        error_text = response.text
+                                        print(f"[OPERATOR] ❌ Error response: {error_text[:200]}")
+                                    except:
+                                        print(f"[OPERATOR] ❌ Could not read error response")
 
                         except Exception as api_error:
                             print(f"[OPERATOR] 💥 Direct API Error for fixture {fixture_id}: {str(api_error)}")
+                            import traceback
+                            traceback.print_exc()
 
                 except Exception as e:
                     print(f"[OPERATOR] ❌ General error for fixture {fixture_id}: {str(e)}")
