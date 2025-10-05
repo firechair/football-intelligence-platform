@@ -390,6 +390,17 @@ async def get_live_fixtures(
 
             print(f"[OPERATOR] 🎯 Final odds for fixture {fixture_id}: {best_odds}")
 
+            # DEBUG: Se non abbiamo quote, metti quote fittizie per testare se il frontend le mostra
+            if not best_odds or len(best_odds) == 0:
+                best_odds = {
+                    "TestBookie": {
+                        "1": 2.1,
+                        "X": 3.2,
+                        "2": 3.5
+                    }
+                }
+                print(f"[OPERATOR] 🧪 Added TEST odds for fixture {fixture_id} to verify frontend displays")
+
             # Usa le funzioni per recuperare i loghi correttamente
             home_team_name = teams_data.get('home', {}).get('name', 'Unknown')
             away_team_name = teams_data.get('away', {}).get('name', 'Unknown')
