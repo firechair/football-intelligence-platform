@@ -317,11 +317,14 @@ async def get_live_fixtures(
 
         # Converti in formato semplice per il frontend e recupera quote reali
         live_matches = []
+        print(f"[DEBUG] Processing {min(len(truly_live_fixtures), limit)} fixtures (limited from {len(truly_live_fixtures)})")
+
         for fixture in truly_live_fixtures[:limit]:  # Limita risultati
             fixture_data = fixture.get('fixture', {})
             teams_data = fixture.get('teams', {})
             league_data = fixture.get('league', {})
             fixture_id = fixture_data.get('id')
+            print(f"[DEBUG] Processing fixture {fixture_id}")
 
             # RECUPERA TUTTE LE QUOTE SALVATE NEL DATABASE (da quando erano future)
             best_odds = {}
@@ -331,6 +334,7 @@ async def get_live_fixtures(
                 odds_records = db.query(ExtendedOddsHistory).filter(
                     ExtendedOddsHistory.fixture_id == fixture_id
                 ).all()
+                print(f"[DEBUG] Fixture {fixture_id}: found {len(odds_records)} odds records")
 
                 if odds_records and len(odds_records) > 0:
                     # Aggrega le migliori quote per ogni mercato (1, X, 2)
@@ -353,6 +357,8 @@ async def get_live_fixtures(
                             if bookmaker_name not in best_away_odds or odds_record.away_win_odds < best_away_odds[bookmaker_name]:
                                 best_away_odds[bookmaker_name] = float(odds_record.away_win_odds)
 
+                    print(f"[DEBUG] Fixture {fixture_id}: home_odds={len(best_home_odds)}, draw_odds={len(best_draw_odds)}, away_odds={len(best_away_odds)}")
+
                     # Crea struttura finale con il primo bookmaker disponibile per ogni mercato
                     if best_home_odds:
                         first_bookmaker = next(iter(best_home_odds.keys()))
@@ -371,10 +377,13 @@ async def get_live_fixtures(
                             best_odds[first_bookmaker] = {}
                         best_odds[first_bookmaker]["2"] = best_away_odds[first_bookmaker]
 
+                    print(f"[DEBUG] Fixture {fixture_id}: final best_odds = {best_odds}")
+
             except Exception as db_error:
                 print(f"[OPERATOR] Database error for fixture {fixture_id}: {str(db_error)}")
 
             # MOSTRA SOLO PARTITE CHE HANNO QUOTE SALVATE NEL DATABASE
+            print(f"[DEBUG] Fixture {fixture_id}: best_odds check = {bool(best_odds and len(best_odds) > 0)}")
             if best_odds and len(best_odds) > 0:
                 # Usa le funzioni per recuperare i loghi correttamente
                 home_team_name = teams_data.get('home', {}).get('name', 'Unknown')
@@ -410,6 +419,7 @@ async def get_live_fixtures(
             else:
                 print(f"[OPERATOR] ⚠️ Skipped live match {fixture_id} - no stored odds")
 
+        print(f"[DEBUG] Final result: {len(live_matches)} matches added to live_matches")
         print(f"[OPERATOR] 🎯 Returning {len(live_matches)} live matches with real odds from DB/API")
         return live_matches
 
