@@ -278,60 +278,26 @@ async def get_live_fixtures(
     force_refresh: bool = Query(False, description="Force cache refresh"),
     db: Session = Depends(get_db)
 ):
-    """🔴 Partite REALMENTE LIVE - versione semplificata per debug"""
-
-    # 🔴 CACHE: Import necessario per cache
-    from app.services.cache_service import get_live_fixtures_cache_key
-    from app.services.fixtures_collector import fixtures_collector
-
-    # 🔴 CACHE: Prova a recuperare dalla cache (TTL 30s per debug)
-    cache_key = get_live_fixtures_cache_key()
-    cached_response = cache_service.get(cache_key)
-    if cached_response and not force_refresh:
-        print(f"[OPERATOR] 🎯 Cache HIT for live fixtures")
-        return cached_response
-    elif force_refresh:
-        print(f"[OPERATOR] 🔄 Force refresh requested - bypassing cache")
-
-    print(f"[OPERATOR] ❌ Cache MISS - Getting live fixtures from API")
+    """🔴 Partite REALMENTE LIVE - versione di emergenza"""
+    print(f"[OPERATOR] 🚨 Emergency live fixtures endpoint called")
 
     try:
-        # Versione ultra-semplificata: prendi partite live dall'API e restituisci dati raw
-        from app.utils.football_api import football_api
-        live_fixtures_from_api = await football_api.get_live_fixtures()
+        # Test minimo: restituisci una partita finta per verificare che l'endpoint funziona
+        emergency_match = {
+            "fixture_id": 999999,
+            "home_team": "Test Home",
+            "away_team": "Test Away",
+            "league_name": "Test League",
+            "status": "1H",
+            "date": "2025-10-05T12:00:00+00:00",
+            "best_odds": {"1": {"TestBookie": 2.0}, "X": {"TestBookie": 3.0}, "2": {"TestBookie": 4.0}}
+        }
 
-        print(f"[OPERATOR] 📡 Got {len(live_fixtures_from_api)} live fixtures from API directly")
-
-        # Restituisci dati semplificati per debug
-        simplified_matches = []
-        for fixture in live_fixtures_from_api[:limit]:
-            fixture_data = fixture.get('fixture', {})
-            teams_data = fixture.get('teams', {})
-            league_data = fixture.get('league', {})
-
-            simplified_match = {
-                "fixture_id": fixture_data.get('id'),
-                "home_team": teams_data.get('home', {}).get('name'),
-                "away_team": teams_data.get('away', {}).get('name'),
-                "league_name": league_data.get('name'),
-                "status": fixture_data.get('status', {}).get('short'),
-                "date": fixture_data.get('date'),
-                "best_odds": {}  # Vuoto per ora
-            }
-            simplified_matches.append(simplified_match)
-
-        print(f"[OPERATOR] 🎯 Returning {len(simplified_matches)} simplified live matches")
-
-        # 🔴 CACHE: Salva in cache per 30 secondi
-        cache_service.set(cache_key, simplified_matches, ttl_seconds=30)
-        print(f"[OPERATOR] 💾 Cached {len(simplified_matches)} simplified live fixtures (30s TTL)")
-
-        return simplified_matches
+        print(f"[OPERATOR] 🚨 Returning emergency test match")
+        return [emergency_match]
 
     except Exception as e:
-        print(f"[OPERATOR] ❌ Error in get_live_fixtures: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        print(f"[OPERATOR] ❌ Emergency endpoint failed: {str(e)}")
         return []
 
 async def _convert_api_fixture_to_frontend(api_fixture: Dict[str, Any], db: Session) -> FixtureResponse:
