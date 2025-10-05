@@ -275,164 +275,57 @@ async def get_fixtures_by_date_range(
 @router.get("/live", response_model=List[Dict[str, Any]])
 async def get_live_fixtures(
     limit: int = Query(50, ge=1, le=100, description="Max live fixtures to return"),
-    force_refresh: bool = Query(False, description="Force cache refresh"),
-    db: Session = Depends(get_db)
+    force_refresh: bool = Query(False, description="Force cache refresh")
 ):
-    """🔴 Partite REALMENTE LIVE - con recupero quote dal database"""
+    """🔴 Partite REALMENTE LIVE - versione semplificata con dati di test"""
     print(f"[OPERATOR] 🔴 Live fixtures endpoint called")
 
     try:
-        # Recupera partite live dall'API-Football direttamente
-        from app.utils.football_api import football_api
-
-        print(f"[OPERATOR] 📡 Getting live fixtures from API-Football...")
-        live_fixtures_from_api = await football_api.get_live_fixtures()
-        print(f"[OPERATOR] 📡 Got {len(live_fixtures_from_api)} fixtures from API")
-
-        # Converti in formato semplice per il frontend e recupera quote dal DB
-        live_matches = []
-        for fixture in live_fixtures_from_api[:limit]:  # Limita risultati
-            fixture_data = fixture.get('fixture', {})
-            teams_data = fixture.get('teams', {})
-            league_data = fixture.get('league', {})
-            fixture_id = fixture_data.get('id')
-
-            # Recupera quote per questa partita - VERSIONE SEMPLIFICATA E AGGRESSIVA
-            best_odds = {}
-            if fixture_id:
-                print(f"[OPERATOR] 🔍 Processing odds for fixture {fixture_id}")
-                try:
-                    # Prima cerca nel database
-                    odds_records = db.query(ExtendedOddsHistory).filter(
-                        ExtendedOddsHistory.fixture_id == fixture_id
-                    ).order_by(ExtendedOddsHistory.created_at.desc()).limit(5).all()
-
-                    if odds_records and len(odds_records) > 0:
-                        print(f"[OPERATOR] 💰 Found {len(odds_records)} odds records in DB for fixture {fixture_id}")
-                        # Organizza le quote
-                        for odds_record in odds_records:
-                            bookmaker_name = odds_record.bookmaker_name or "Bookie"
-                            if bookmaker_name not in best_odds:
-                                best_odds[bookmaker_name] = {}
-
-                            if odds_record.home_win_odds:
-                                best_odds[bookmaker_name]["1"] = float(odds_record.home_win_odds)
-                            if odds_record.draw_odds:
-                                best_odds[bookmaker_name]["X"] = float(odds_record.draw_odds)
-                            if odds_record.away_win_odds:
-                                best_odds[bookmaker_name]["2"] = float(odds_record.away_win_odds)
-                        print(f"[OPERATOR] ✅ Loaded odds from DB for fixture {fixture_id}")
-                    else:
-                        print(f"[OPERATOR] ⚠️ No odds in DB for fixture {fixture_id}, fetching from API...")
-                        # Recupera direttamente dall'API con chiamata HTTP diretta
-                        try:
-                            import httpx
-                            print(f"[OPERATOR] 🌐 Direct HTTP call to API-Football for fixture {fixture_id}...")
-
-                            api_key = "REDACTED"
-                            url = f"https://v3.football.api-sports.io/odds?fixture={fixture_id}"
-
-                            async with httpx.AsyncClient(timeout=10.0) as client:
-                                response = await client.get(url, headers={"x-apisports-key": api_key})
-
-                                if response.status_code == 200:
-                                    data = response.json()
-                                    odds_data = data.get('response', [])
-                                    print(f"[OPERATOR] 📡 Direct API response for {fixture_id}: {len(odds_data)} bookmakers")
-
-                                    if odds_data and len(odds_data) > 0:
-                                        # Prendi il primo bookmaker
-                                        bookmaker_data = odds_data[0]
-                                        bookmaker_name = bookmaker_data.get('bookmaker', {}).get('name', 'Bookie')
-                                        bets = bookmaker_data.get('bets', [])
-
-                                        print(f"[OPERATOR] 📊 Processing bookmaker: {bookmaker_name}")
-
-                                        for bet in bets:
-                                            if bet.get('name') == 'Match Winner':
-                                                values = bet.get('values', [])
-                                                print(f"[OPERATOR] 🎯 Found Match Winner with {len(values)} values")
-
-                                                for value in values:
-                                                    val_type = value.get('value')
-                                                    odd_val = value.get('odd')
-
-                                                    if val_type and odd_val:
-                                                        if bookmaker_name not in best_odds:
-                                                            best_odds[bookmaker_name] = {}
-
-                                                        if val_type == '1':
-                                                            best_odds[bookmaker_name]["1"] = float(odd_val)
-                                                        elif val_type == 'X':
-                                                            best_odds[bookmaker_name]["X"] = float(odd_val)
-                                                        elif val_type == '2':
-                                                            best_odds[bookmaker_name]["2"] = float(odd_val)
-
-                                        print(f"[OPERATOR] ✅ Final odds for fixture {fixture_id}: {best_odds}")
-
-                                        # Salva nel database
-                                        if best_odds:
-                                            try:
-                                                await _save_odds_to_database(odds_data, fixture_id, db)
-                                                print(f"[OPERATOR] 💾 Saved to database")
-                                            except Exception as save_error:
-                                                print(f"[OPERATOR] ⚠️ Save error: {str(save_error)}")
-                                else:
-                                    print(f"[OPERATOR] ❌ API returned status {response.status_code}")
-
-                        except Exception as api_error:
-                            print(f"[OPERATOR] 💥 Direct API Error for fixture {fixture_id}: {str(api_error)}")
-
-                except Exception as e:
-                    print(f"[OPERATOR] ❌ General error for fixture {fixture_id}: {str(e)}")
-                    import traceback
-                    traceback.print_exc()
-
-            print(f"[OPERATOR] 🎯 Final odds for fixture {fixture_id}: {best_odds}")
-
-            # DEBUG: Se non abbiamo quote, metti quote fittizie per testare se il frontend le mostra
-            if not best_odds or len(best_odds) == 0:
-                best_odds = {
+        # VERSIONE DI TEST: restituisci partite fittizie CON quote per verificare se il frontend le mostra
+        live_matches = [
+            {
+                "fixture_id": 999001,
+                "home_team": "Test Napoli",
+                "away_team": "Test Genoa",
+                "home_team_logo": "/api/v1/assets/logo?url=https%3A%2F%2Fmedia.api-sports.io%2Ffootball%2Fteams%2F492.png&name=Napoli&type=team",
+                "away_team_logo": "/api/v1/assets/logo?url=https%3A%2F%2Fmedia.api-sports.io%2Ffootball%2Fteams%2F495.png&name=Genoa&type=team",
+                "fixture_date": "2025-10-05T12:00:00+00:00",
+                "league_id": 135,
+                "league_name": "Serie A",
+                "country_name": "Italy",
+                "league_logo": "/api/v1/assets/logo?url=https%3A%2F%2Fmedia.api-sports.io%2Ffootball%2Fleagues%2F135.png&name=Serie+A&type=league",
+                "best_odds": {
                     "TestBookie": {
                         "1": 2.1,
                         "X": 3.2,
                         "2": 3.5
                     }
-                }
-                print(f"[OPERATOR] 🧪 Added TEST odds for fixture {fixture_id} to verify frontend displays")
-
-            # Usa le funzioni per recuperare i loghi correttamente
-            home_team_name = teams_data.get('home', {}).get('name', 'Unknown')
-            away_team_name = teams_data.get('away', {}).get('name', 'Unknown')
-            league_name = league_data.get('name', 'Unknown League')
-
-            # Per le partite live, usa direttamente i loghi dall'API-Football se disponibili
-            home_api_logo = teams_data.get('home', {}).get('logo')
-            away_api_logo = teams_data.get('away', {}).get('logo')
-            league_api_logo = league_data.get('logo')
-
-            home_logo = get_team_logo_url(home_team_name, home_api_logo) if home_api_logo else get_team_logo_url(home_team_name)
-            away_logo = get_team_logo_url(away_team_name, away_api_logo) if away_api_logo else get_team_logo_url(away_team_name)
-            league_logo = get_league_logo_url(league_name, league_api_logo) if league_api_logo else get_league_logo_url(league_name)
-
-            # Crea dizionario serializzabile per il frontend
-            match = {
-                "fixture_id": fixture_id,
-                "home_team": home_team_name,
-                "away_team": away_team_name,
-                "home_team_logo": home_logo or "",
-                "away_team_logo": away_logo or "",
-                "fixture_date": fixture_data.get('date'),
-                "league_id": league_data.get('id'),
-                "league_name": league_name,
-                "country_name": league_data.get('country'),
-                "league_logo": league_logo or "",
-                "best_odds": best_odds,  # Solo quote reali dal database/API
+                },
+                "prediction": None
+            },
+            {
+                "fixture_id": 999002,
+                "home_team": "Test Copenhagen",
+                "away_team": "Test Midtjylland",
+                "home_team_logo": "/api/v1/assets/logo?url=https%3A%2F%2Fmedia.api-sports.io%2Ffootball%2Fteams%2F939.png&name=FC+Copenhagen&type=team",
+                "away_team_logo": "/api/v1/assets/logo?url=https%3A%2F%2Fmedia.api-sports.io%2Ffootball%2Fteams%2F1788.png&name=FC+Midtjylland&type=team",
+                "fixture_date": "2025-10-05T13:00:00+00:00",
+                "league_id": 119,
+                "league_name": "Superliga",
+                "country_name": "Denmark",
+                "league_logo": "/api/v1/assets/logo?url=https%3A%2F%2Fmedia.api-sports.io%2Ffootball%2Fleagues%2F119.png&name=Superliga&type=league",
+                "best_odds": {
+                    "TestBookie": {
+                        "1": 1.8,
+                        "X": 3.5,
+                        "2": 4.2
+                    }
+                },
                 "prediction": None
             }
-            live_matches.append(match)
+        ]
 
-        print(f"[OPERATOR] 🎯 Returning {len(live_matches)} live matches with odds from DB")
+        print(f"[OPERATOR] 🧪 Returning {len(live_matches)} TEST live matches with odds and logos")
         return live_matches
 
     except Exception as e:
