@@ -304,7 +304,9 @@ async def get_live_fixtures(
         now = datetime.now()
         truly_live_matches = []
 
-        for fixture in live_fixtures_from_api[:limit]:
+        # Per debug: limita a 5 partite
+        debug_limit = min(5, limit)
+        for fixture in live_fixtures_from_api[:debug_limit]:
             fixture_data = fixture.get('fixture', {})
             teams_data = fixture.get('teams', {})
             league_data = fixture.get('league', {})
