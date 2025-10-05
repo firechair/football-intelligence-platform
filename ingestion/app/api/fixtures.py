@@ -275,9 +275,10 @@ async def get_fixtures_by_date_range(
 @router.get("/live")
 async def get_live_fixtures(
     limit: int = Query(50, ge=1, le=100, description="Max live fixtures to return"),
-    force_refresh: bool = Query(False, description="Force cache refresh")
+    force_refresh: bool = Query(False, description="Force cache refresh"),
+    db: Session = Depends(get_db)
 ):
-    """🔴 Partite REALMENTE LIVE - versione stabile con recupero dati"""
+    """🔴 Partite REALMENTE LIVE - con recupero quote dal database"""
     print(f"[OPERATOR] 🔴 Live fixtures endpoint called")
 
     try:
@@ -288,22 +289,53 @@ async def get_live_fixtures(
         live_fixtures_from_api = await football_api.get_live_fixtures()
         print(f"[OPERATOR] 📡 Got {len(live_fixtures_from_api)} fixtures from API")
 
-        # Converti in formato semplice per il frontend
+        # Converti in formato semplice per il frontend e recupera quote dal DB
         live_matches = []
         for fixture in live_fixtures_from_api[:limit]:  # Limita risultati
             fixture_data = fixture.get('fixture', {})
             teams_data = fixture.get('teams', {})
             league_data = fixture.get('league', {})
+            fixture_id = fixture_data.get('id')
 
-            # Crea oggetto semplificato
+            # Recupera quote dal database per questa partita
+            best_odds = {}
+            if fixture_id:
+                try:
+                    # Cerca le quote più recenti per questa partita
+                    odds_records = db.query(ExtendedOddsHistory).filter(
+                        ExtendedOddsHistory.fixture_id == fixture_id
+                    ).order_by(ExtendedOddsHistory.created_at.desc()).limit(10).all()
+
+                    if odds_records:
+                        print(f"[OPERATOR] 💰 Found {len(odds_records)} odds records for fixture {fixture_id}")
+                        # Organizza le quote per bookmaker e tipo
+                        for odds_record in odds_records:
+                            bookmaker_name = odds_record.bookmaker_name or "Unknown"
+                            if bookmaker_name not in best_odds:
+                                best_odds[bookmaker_name] = {}
+
+                            # Aggiungi le quote per 1X2 se disponibili
+                            if odds_record.home_win_odds:
+                                best_odds[bookmaker_name]["1"] = float(odds_record.home_win_odds)
+                            if odds_record.draw_odds:
+                                best_odds[bookmaker_name]["X"] = float(odds_record.draw_odds)
+                            if odds_record.away_win_odds:
+                                best_odds[bookmaker_name]["2"] = float(odds_record.away_win_odds)
+                    else:
+                        print(f"[OPERATOR] ⚠️ No odds found in DB for fixture {fixture_id}")
+
+                except Exception as e:
+                    print(f"[OPERATOR] ⚠️ Error retrieving odds for fixture {fixture_id}: {str(e)}")
+
+            # Crea oggetto semplificato con quote
             match = {
-                "fixture_id": fixture_data.get('id'),
+                "fixture_id": fixture_id,
                 "home_team": teams_data.get('home', {}).get('name', 'Unknown'),
                 "away_team": teams_data.get('away', {}).get('name', 'Unknown'),
                 "league_name": league_data.get('name', 'Unknown League'),
                 "country_name": league_data.get('country'),
                 "fixture_date": fixture_data.get('date'),
-                "best_odds": {},  # Vuoto per ora
+                "best_odds": best_odds,  # Quote dal database
                 "home_team_logo": "",
                 "away_team_logo": "",
                 "league_logo": "",
@@ -311,7 +343,7 @@ async def get_live_fixtures(
             }
             live_matches.append(match)
 
-        print(f"[OPERATOR] 🎯 Returning {len(live_matches)} live matches")
+        print(f"[OPERATOR] 🎯 Returning {len(live_matches)} live matches with odds from DB")
         return live_matches
 
     except Exception as e:
