@@ -318,7 +318,8 @@ async def get_live_fixtures(
                     time_since_start = (now - fixture_date).total_seconds() / 60
                     live_statuses = ['1H', 'HT', '2H', 'ET', 'BT', 'P', 'LIVE', 'IN_PLAY', 'PLAYING']
                     is_status_live = status.get('short') in live_statuses
-                    is_temporally_live = time_since_start >= -5 and time_since_start <= 150
+                    # Per debug: allarga il filtro temporale
+                    is_temporally_live = time_since_start >= -60 and time_since_start <= 300  # 1 ora anticipo, 5 ore durata
 
                     if is_status_live and is_temporally_live:
                         # Converti in FixtureResponse
@@ -338,6 +339,8 @@ async def get_live_fixtures(
                         )
                         truly_live_matches.append(match_response)
                         print(f"[OPERATOR] ✅ LIVE: {match_response.home_team} vs {match_response.away_team} ({status.get('short')})")
+                    else:
+                        print(f"[OPERATOR] ❌ Filtered out: {fixture_data.get('id')} - status: {status.get('short')} ({'OK' if is_status_live else 'BAD'}), time_diff: {time_since_start:.1f}min ({'OK' if is_temporally_live else 'BAD'})")
 
                 except Exception as e:
                     print(f"[OPERATOR] ⚠️ Error processing fixture {fixture_data.get('id')}: {str(e)}")
