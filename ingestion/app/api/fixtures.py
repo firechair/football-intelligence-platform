@@ -296,28 +296,37 @@ async def get_live_fixtures(
     print(f"[OPERATOR] ❌ Cache MISS - Getting live fixtures from API")
 
     try:
-        # Versione semplificata: prendi partite live dall'API e restituiscile direttamente
-        live_fixtures_from_api = await fixtures_collector.collect_live_fixtures()
+        # Versione ultra-semplificata: prendi partite live dall'API e restituisci dati raw
+        from app.utils.football_api import football_api
+        live_fixtures_from_api = await football_api.get_live_fixtures()
 
-        print(f"[OPERATOR] 📡 Got {len(live_fixtures_from_api)} live fixtures from API")
+        print(f"[OPERATOR] 📡 Got {len(live_fixtures_from_api)} live fixtures from API directly")
 
-        # Converti direttamente in formato frontend (senza salvare nel DB per ora)
-        truly_live_matches = []
-        for fixture in live_fixtures_from_api[:limit]:  # Limita risultati
-            try:
-                fixture_data = await _convert_api_fixture_to_frontend(fixture, db)
-                truly_live_matches.append(fixture_data)
-            except Exception as e:
-                print(f"[OPERATOR] ❌ Error converting fixture {fixture.get('fixture', {}).get('id')}: {str(e)}")
-                continue
+        # Restituisci dati semplificati per debug
+        simplified_matches = []
+        for fixture in live_fixtures_from_api[:limit]:
+            fixture_data = fixture.get('fixture', {})
+            teams_data = fixture.get('teams', {})
+            league_data = fixture.get('league', {})
 
-        print(f"[OPERATOR] 🎯 Returning {len(truly_live_matches)} live matches directly from API")
+            simplified_match = {
+                "fixture_id": fixture_data.get('id'),
+                "home_team": teams_data.get('home', {}).get('name'),
+                "away_team": teams_data.get('away', {}).get('name'),
+                "league_name": league_data.get('name'),
+                "status": fixture_data.get('status', {}).get('short'),
+                "date": fixture_data.get('date'),
+                "best_odds": {}  # Vuoto per ora
+            }
+            simplified_matches.append(simplified_match)
+
+        print(f"[OPERATOR] 🎯 Returning {len(simplified_matches)} simplified live matches")
 
         # 🔴 CACHE: Salva in cache per 30 secondi
-        cache_service.set(cache_key, truly_live_matches, ttl_seconds=30)
-        print(f"[OPERATOR] 💾 Cached {len(truly_live_matches)} live fixtures (30s TTL)")
+        cache_service.set(cache_key, simplified_matches, ttl_seconds=30)
+        print(f"[OPERATOR] 💾 Cached {len(simplified_matches)} simplified live fixtures (30s TTL)")
 
-        return truly_live_matches
+        return simplified_matches
 
     except Exception as e:
         print(f"[OPERATOR] ❌ Error in get_live_fixtures: {str(e)}")
