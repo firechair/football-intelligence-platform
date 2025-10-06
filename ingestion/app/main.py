@@ -89,7 +89,7 @@ async def startup_event():
         logger.info("Database tables created successfully")
     except Exception as e:
         logger.error(f"Error creating database tables: {e}")
-    
+
     # Avvia scheduler in background senza bloccarlo
     # Avvia scheduler giornaliero
     if not scheduler.running:
