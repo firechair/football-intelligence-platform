@@ -242,9 +242,8 @@ class OddsTrackingScheduler:
         
         db = next(get_db())
         try:
-            await cleanup_service.perform_cleanup(db)
-            logger.info("✅ Daily cleanup COMPLETED")
-            
+            cleanup_result = await cleanup_service.cleanup_finished_matches(db)
+            logger.info(f"✅ Daily cleanup COMPLETED: {cleanup_result}")
         finally:
             db.close()
 

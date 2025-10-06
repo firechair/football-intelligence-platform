@@ -326,58 +326,53 @@ async def get_live_fixtures(
             fixture_id = fixture_data.get('id')
             print(f"[DEBUG] Processing fixture {fixture_id}")
 
-            # RECUPERA TUTTE LE QUOTE SALVATE NEL DATABASE (da quando erano future)
+            # RECUPERA TUTTE LE QUOTE SALVATE NEL DATABASE (struttura normalizzata)
             best_odds = {}
 
             try:
-                # Prendi TUTTE le quote per questo fixture (non limitare a 3!)
+                # Prendi TUTTE le quote per questo fixture dalla struttura normalizzata
                 odds_records = db.query(ExtendedOddsHistory).filter(
-                    ExtendedOddsHistory.fixture_id == fixture_id
-                ).all()
-                print(f"[DEBUG] Fixture {fixture_id}: found {len(odds_records)} odds records")
+                    ExtendedOddsHistory.fixture_id == fixture_id,
+                    ExtendedOddsHistory.market_name.in_(["1", "X", "2"])  # Solo mercato 1X2
+                ).order_by(ExtendedOddsHistory.collected_at.desc()).all()
+
+                print(f"[DEBUG] Fixture {fixture_id}: found {len(odds_records)} 1X2 odds records")
 
                 if odds_records and len(odds_records) > 0:
-                    # Aggrega le migliori quote per ogni mercato (1, X, 2)
-                    best_home_odds = {}
-                    best_draw_odds = {}
-                    best_away_odds = {}
+                    # Raggruppa per bookmaker e trova le quote più recenti per ogni mercato
+                    bookmaker_odds = {}
 
                     for odds_record in odds_records:
-                        bookmaker_name = odds_record.bookmaker_name or "Bookie"
+                        bookmaker_name = odds_record.bookmaker_name or "API-Football"
+                        market_name = odds_record.market_name
+                        odd_value = float(odds_record.odd_value)
 
-                        if odds_record.home_win_odds:
-                            if bookmaker_name not in best_home_odds or odds_record.home_win_odds < best_home_odds[bookmaker_name]:
-                                best_home_odds[bookmaker_name] = float(odds_record.home_win_odds)
+                        if bookmaker_name not in bookmaker_odds:
+                            bookmaker_odds[bookmaker_name] = {}
 
-                        if odds_record.draw_odds:
-                            if bookmaker_name not in best_draw_odds or odds_record.draw_odds < best_draw_odds[bookmaker_name]:
-                                best_draw_odds[bookmaker_name] = float(odds_record.draw_odds)
+                        # Per ogni bookmaker, prendi la quota più recente per ogni mercato
+                        if market_name not in bookmaker_odds[bookmaker_name]:
+                            bookmaker_odds[bookmaker_name][market_name] = odd_value
 
-                        if odds_record.away_win_odds:
-                            if bookmaker_name not in best_away_odds or odds_record.away_win_odds < best_away_odds[bookmaker_name]:
-                                best_away_odds[bookmaker_name] = float(odds_record.away_win_odds)
+                    print(f"[DEBUG] Fixture {fixture_id}: bookmakers with odds = {list(bookmaker_odds.keys())}")
 
-                    print(f"[DEBUG] Fixture {fixture_id}: home_odds={len(best_home_odds)}, draw_odds={len(best_draw_odds)}, away_odds={len(best_away_odds)}")
+                    # Prendi il primo bookmaker disponibile (normalmente API-Football)
+                    if bookmaker_odds:
+                        first_bookmaker = next(iter(bookmaker_odds.keys()))
+                        bookmaker_data = bookmaker_odds[first_bookmaker]
 
-                    # Crea struttura finale con il primo bookmaker disponibile per ogni mercato
-                    if best_home_odds:
-                        first_bookmaker = next(iter(best_home_odds.keys()))
-                        best_odds[first_bookmaker] = {}
-                        best_odds[first_bookmaker]["1"] = best_home_odds[first_bookmaker]
-
-                    if best_draw_odds:
-                        first_bookmaker = next(iter(best_draw_odds.keys()))
-                        if first_bookmaker not in best_odds:
-                            best_odds[first_bookmaker] = {}
-                        best_odds[first_bookmaker]["X"] = best_draw_odds[first_bookmaker]
-
-                    if best_away_odds:
-                        first_bookmaker = next(iter(best_away_odds.keys()))
-                        if first_bookmaker not in best_odds:
-                            best_odds[first_bookmaker] = {}
-                        best_odds[first_bookmaker]["2"] = best_away_odds[first_bookmaker]
-
-                    print(f"[DEBUG] Fixture {fixture_id}: final best_odds = {best_odds}")
+                        # Assicurati di avere tutte e 3 le quote 1X2
+                        if "1" in bookmaker_data and "X" in bookmaker_data and "2" in bookmaker_data:
+                            best_odds[first_bookmaker] = {
+                                "1": bookmaker_data["1"],
+                                "X": bookmaker_data["X"],
+                                "2": bookmaker_data["2"]
+                            }
+                            print(f"[DEBUG] Fixture {fixture_id}: SUCCESS - complete 1X2 odds found = {best_odds}")
+                        else:
+                            print(f"[DEBUG] Fixture {fixture_id}: INCOMPLETE - missing some 1X2 odds: {bookmaker_data}")
+                    else:
+                        print(f"[DEBUG] Fixture {fixture_id}: NO bookmaker data found")
 
             except Exception as db_error:
                 print(f"[OPERATOR] Database error for fixture {fixture_id}: {str(db_error)}")
