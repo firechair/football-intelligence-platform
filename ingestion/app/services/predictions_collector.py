@@ -105,7 +105,7 @@ class PredictionsCollector:
             return {"fixtures_processed": 0, "predictions_collected": 0, "errors": []}
         
         logger.info(f"Found {len(fixture_ids)} fixtures for predictions collection")
-        
+
         # LIMITA a massimo 50 partite per evitare timeout (6 ore)
         if len(fixture_ids) > 50:
             logger.info(f"Limiting to first 50 fixtures out of {len(fixture_ids)} to avoid timeout")
@@ -162,7 +162,110 @@ class PredictionsCollector:
         
         logger.info(f"Predictions collection completed: {collection_stats}")
         return collection_stats
-    
+
+    async def collect_future_predictions_by_day(self, db: Session, days_ahead: int = 10) -> Dict[str, Any]:
+        """
+        Raccoglie predizioni per partite future GIORNO PER GIORNO
+
+        Invece di raccogliere tutto insieme (che causa limiti di 50 partite),
+        processa giorno per giorno fino al raggiungimento del limite totale.
+        """
+        logger.info(f"🔮 Starting FUTURE predictions collection (day by day, up to {days_ahead} days ahead)")
+
+        from datetime import date
+        today = date.today()
+        total_processed = 0
+        total_collected = 0
+        total_updated = 0
+        total_errors = []
+        max_total_fixtures = 30  # Limite ridotto per stabilità (predizioni sono più leggere)
+
+        # Per ogni giorno futuro (a partire da domani)
+        for day_offset in range(1, days_ahead + 1):
+            target_date = today + timedelta(days=day_offset)
+
+            logger.info(f"📅 Processing predictions for {target_date} (day {day_offset}/{days_ahead})")
+
+            # Ottieni fixtures per questo giorno specifico
+            day_fixtures = db.query(FixtureTrackingStatus).filter(
+                FixtureTrackingStatus.fixture_date >= target_date,
+                FixtureTrackingStatus.fixture_date < target_date + timedelta(days=1),
+                FixtureTrackingStatus.tracking_status.in_(["pending", "active"])
+            ).all()
+
+            if not day_fixtures:
+                logger.info(f"  ℹ️ No fixtures found for {target_date}")
+                continue
+
+            fixture_ids = [f.fixture_id for f in day_fixtures]
+            logger.info(f"  📊 Found {len(fixture_ids)} fixtures for {target_date}")
+
+            # Raccogli TUTTE le partite del giorno (non filtro per predizioni esistenti)
+            logger.info(f"  🎯 Processing ALL {len(fixture_ids)} fixtures for {target_date}")
+
+            # Processa le predizioni per questo giorno
+            day_collected = 0
+            day_updated = 0
+            day_errors = []
+
+            for i, fixture_id in enumerate(fixture_ids):
+                # Controlla limite totale
+                if total_processed >= max_total_fixtures:
+                    logger.info(f"  🛑 Reached total limit of {max_total_fixtures} fixtures - stopping")
+                    break
+
+                try:
+                    logger.info(f"  🔮 Processing prediction {total_processed + 1}/{max_total_fixtures} for fixture {fixture_id} ({target_date})")
+
+                    # Chiamata API singola per prediction
+                    prediction_data = await football_api.get_predictions_for_fixture(fixture_id)
+
+                    if prediction_data:
+                        result = await self._process_fixture_prediction(fixture_id, prediction_data, db)
+
+                        if result["success"]:
+                            if result["is_update"]:
+                                day_updated += 1
+                                total_updated += 1
+                            else:
+                                day_collected += 1
+                                total_collected += 1
+                            logger.info(f"    ✅ {'Updated' if result['is_update'] else 'Collected'} prediction for fixture {fixture_id}")
+                        else:
+                            error_msg = f"Fixture {fixture_id}: {result.get('reason', 'Unknown error')}"
+                            day_errors.append(error_msg)
+                            total_errors.append(error_msg)
+                    else:
+                        logger.info(f"    ℹ️ No prediction available from API for fixture {fixture_id}")
+
+                    total_processed += 1
+
+                    # Pausa tra richieste: MAX 1 chiamata al secondo
+                    if i < len(fixture_ids) - 1:
+                        await asyncio.sleep(1)
+
+                except Exception as e:
+                    error_msg = f"Fixture {fixture_id}: {str(e)}"
+                    day_errors.append(error_msg)
+                    total_errors.append(error_msg)
+                    logger.error(f"  ❌ Error processing fixture {fixture_id}: {str(e)}")
+
+            logger.info(f"  📊 Day {target_date} summary: {day_collected} collected, {day_updated} updated, {len(day_errors)} errors")
+
+            # Se abbiamo raggiunto il limite totale, fermiamoci
+            if total_processed >= max_total_fixtures:
+                logger.info(f"🛑 Reached total limit of {max_total_fixtures} fixtures across all days")
+                break
+
+        logger.info(f"🔮 Future predictions collection completed: {total_collected} collected, {total_updated} updated, {len(total_errors)} errors across {total_processed} fixtures")
+
+        return {
+            "fixtures_processed": total_processed,
+            "predictions_collected": total_collected,
+            "predictions_updated": total_updated,
+            "errors": total_errors
+        }
+
     async def _get_daily_fixtures_only(self, db: Session) -> List[int]:
         """
         NUOVO: Ottiene fixture ID SOLO per partite giornaliere (oggi + domani)

@@ -203,36 +203,35 @@ class OddsTrackingScheduler:
             db.close()
     
     async def _process_future_predictions(self):
-        """🔮 PROCESSA PREDIZIONI FUTURE (settimanale)"""
+        """🔮 PROCESSA PREDIZIONI FUTURE (giorno per giorno, non settimanale)"""
         from datetime import date
         today = date.today()
-        
-        if today.weekday() != 0:  # Solo lunedi
-            logger.info("🔮 Future predictions: skipping (not Monday)")
-            return
-        
-        logger.info("🔮 Processing FUTURE predictions (weekly)")
-        
+
+        # Esegui ogni giorno, non solo lunedì (per progressiva raccolta giorno per giorno)
+        logger.info("🔮 Processing FUTURE predictions (day by day)")
+
         db = next(get_db())
         try:
-            future_stats = await predictions_collector.collect_predictions_for_all_fixtures(db)
-            logger.info(f"🔮 Future predictions: {future_stats}")
-            
+            # Usa il nuovo metodo che processa giorno per giorno invece di tutto insieme
+            future_stats = await predictions_collector.collect_future_predictions_by_day(db, days_ahead=10)
+            logger.info(f"🔮 Future predictions (day by day): {future_stats}")
+
         finally:
             db.close()
     
     async def _process_future_odds(self):
-        """🎯 PROCESSA QUOTE FUTURE (tracking continuo per andamento nel tempo)"""
-        logger.info("🎯 Processing FUTURE odds (continuous tracking)")
+        """🎯 PROCESSA QUOTE FUTURE (giorno per giorno, non sovrapposto)"""
+        from datetime import date
+        today = date.today()
+
+        # Esegui ogni giorno, ma non contemporaneamente ad altri processi
+        logger.info("🎯 Processing FUTURE odds (day by day)")
 
         db = next(get_db())
         try:
-            # Raccogli quote per TUTTE le future fixtures (non limitato, per storico completo)
-            fixture_ids = await fixtures_collector.get_active_fixtures_for_tracking(db)
-            if fixture_ids:
-                # Non limitiamo più - vogliamo tracking completo per vedere andamento
-                stats = await odds_collector.collect_odds_for_fixtures(fixture_ids, db)
-                logger.info(f"🎯 Future odds collected (continuous tracking): {stats}")
+            # Usa il nuovo metodo che processa giorno per giorno
+            odds_stats = await odds_collector.collect_future_odds_by_day(db, days_ahead=10)
+            logger.info(f"🎯 Future odds (day by day): {odds_stats}")
 
         finally:
             db.close()

@@ -270,9 +270,9 @@ class OddsCollector:
                     logger.info(f"ℹ️ No odds available for fixture {fixture_id} (continuing with others)")
                     collection_stats["fixtures_processed"] += 1
                 
-                # Rate limiting: massimo 2 chiamate/secondo
-                # Attendi 0.5 secondi tra ogni chiamata per rispettare il limite
-                await asyncio.sleep(0.5)
+                # Rate limiting: massimo 1 chiamata/secondo per quote (più lento delle predizioni)
+                # Attendi 1 secondo tra ogni chiamata per rispettare il limite
+                await asyncio.sleep(1)
                 
             except Exception as e:
                 logger.error(f"Error processing fixture {fixture_id}: {str(e)}")
@@ -683,6 +683,129 @@ class OddsCollector:
             logger.error(f"Error processing live 1X2 bet: {str(e)}")
 
         return saved_count
+
+    async def collect_future_odds_by_day(self, db: Session, days_ahead: int = 10) -> Dict[str, Any]:
+        """
+        Raccoglie quote per partite future GIORNO PER GIORNO (OTTIMIZZATO)
+
+        Processa giorno per giorno raccogliendo TUTTE le quote di tutti i mercati
+        di tutti i bookmaker per ogni partita di quel giorno.
+
+        OTTIMIZZAZIONI:
+        - Rate limiting: 2 secondi tra chiamate per essere più sicuri
+        - Limite ridotto: max 20 partite per giorno per quote (sono più pesanti)
+        - Batch processing per gestire meglio la memoria
+        - Timeout handling migliorato
+        """
+        logger.info(f"🎯 Starting OPTIMIZED FUTURE odds collection (day by day, up to {days_ahead} days ahead)")
+
+        from datetime import date
+        today = date.today()
+        total_processed = 0
+        total_quotes_collected = 0
+        total_errors = []
+        max_fixtures_per_day = 20  # Ridotto per stabilità (quote sono più pesanti)
+        max_total_fixtures = 50    # Limite totale ridotto per evitare timeout
+
+        # Per ogni giorno futuro (a partire da domani)
+        for day_offset in range(1, days_ahead + 1):
+            target_date = today + timedelta(days=day_offset)
+
+            logger.info(f"📅 Processing odds for {target_date} (day {day_offset}/{days_ahead})")
+
+            # Ottieni fixtures per questo giorno specifico
+            day_fixtures = db.query(FixtureTrackingStatus).filter(
+                FixtureTrackingStatus.fixture_date >= target_date,
+                FixtureTrackingStatus.fixture_date < target_date + timedelta(days=1),
+                FixtureTrackingStatus.tracking_status.in_(["pending", "active"])
+            ).all()
+
+            if not day_fixtures:
+                logger.info(f"  ℹ️ No fixtures found for {target_date}")
+                continue
+
+            fixture_ids = [f.fixture_id for f in day_fixtures]
+            logger.info(f"  📊 Found {len(fixture_ids)} fixtures for {target_date}")
+
+            # Limita fixtures per giorno per stabilità
+            if len(fixture_ids) > max_fixtures_per_day:
+                logger.info(f"  ⚠️ Limiting to {max_fixtures_per_day} fixtures per day (found {len(fixture_ids)})")
+                fixture_ids = fixture_ids[:max_fixtures_per_day]
+
+            logger.info(f"  🎯 Processing {len(fixture_ids)} fixtures for {target_date}")
+
+            # Processa le quote per questo giorno in batch per stabilità
+            day_quotes_collected = 0
+            day_errors = []
+            batch_size = 5  # Processa in batch di 5 per ridurre carico memoria
+
+            for batch_start in range(0, len(fixture_ids), batch_size):
+                batch_end = min(batch_start + batch_size, len(fixture_ids))
+                batch_fixture_ids = fixture_ids[batch_start:batch_end]
+
+                logger.info(f"  📦 Processing batch {batch_start//batch_size + 1}/{(len(fixture_ids) + batch_size - 1)//batch_size} ({len(batch_fixture_ids)} fixtures)")
+
+                for i, fixture_id in enumerate(batch_fixture_ids):
+                    # Controlla limite totale
+                    if total_processed >= max_total_fixtures:
+                        logger.info(f"  🛑 Reached total limit of {max_total_fixtures} fixtures - stopping")
+                        break
+
+                    try:
+                        batch_pos = batch_start + i + 1
+                        logger.info(f"  🎯 Processing odds {batch_pos}/{len(fixture_ids)} (total: {total_processed + 1}) for fixture {fixture_id}")
+
+                        # Chiamata API per quote di questa partita con timeout
+                        fixture_odds = await football_api.get_odds_for_fixture(fixture_id)
+
+                        if fixture_odds:
+                            # Processa e salva le quote nel database
+                            quotes_saved = await self._process_fixture_odds(fixture_id, fixture_odds, db)
+                            day_quotes_collected += quotes_saved
+                            total_quotes_collected += quotes_saved
+                            logger.info(f"    ✅ Collected {quotes_saved} odds for fixture {fixture_id}")
+                        else:
+                            logger.info(f"    ℹ️ No odds available from API for fixture {fixture_id}")
+
+                        total_processed += 1
+
+                        # Rate limiting più conservativo: 2 secondi tra chiamate per quote
+                        if i < len(batch_fixture_ids) - 1:
+                            await asyncio.sleep(2)
+
+                    except Exception as e:
+                        error_msg = f"Fixture {fixture_id}: {str(e)}"
+                        day_errors.append(error_msg)
+                        total_errors.append(error_msg)
+                        logger.error(f"  ❌ Error processing odds for fixture {fixture_id}: {str(e)}")
+
+                # Pausa tra batch per ridurre carico
+                if batch_end < len(fixture_ids):
+                    logger.info(f"  ⏳ Batch completed, pausing 5 seconds before next batch...")
+                    await asyncio.sleep(5)
+
+                # Controllo limite raggiunto
+                if total_processed >= max_total_fixtures:
+                    break
+
+            logger.info(f"  📊 Day {target_date} summary: {day_quotes_collected} quotes collected, {len(day_errors)} errors")
+
+            # Se abbiamo raggiunto il limite totale, fermiamoci
+            if total_processed >= max_total_fixtures:
+                logger.info(f"🛑 Reached total limit of {max_total_fixtures} fixtures across all days")
+                break
+
+            # Pausa tra giorni per ridurre carico complessivo
+            logger.info(f"  ⏳ Day {target_date} completed, pausing 10 seconds before next day...")
+            await asyncio.sleep(10)
+
+        logger.info(f"🎯 OPTIMIZED Future odds collection completed: {total_quotes_collected} quotes collected across {total_processed} fixtures, {len(total_errors)} errors")
+
+        return {
+            "fixtures_processed": total_processed,
+            "quotes_collected": total_quotes_collected,
+            "errors": total_errors
+        }
 
 # Singleton instance
 odds_collector = OddsCollector()
