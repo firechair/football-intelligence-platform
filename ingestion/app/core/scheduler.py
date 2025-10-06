@@ -54,8 +54,11 @@ class OddsTrackingScheduler:
                 
                 # 6. QUOTE FUTURE (limitato, non continuo)
                 await self._process_future_odds()
-                
-                # 7. PULIZIA (1x/giorno)
+
+                # 7. QUOTE LIVE (in-play) per partite attualmente in corso
+                await self._process_live_odds()
+
+                # 8. PULIZIA (1x/giorno)
                 await self._process_daily_cleanup()
                 
                 # Attendi fino al prossimo giorno
@@ -235,7 +238,48 @@ class OddsTrackingScheduler:
 
         finally:
             db.close()
-    
+
+    async def _process_live_odds(self):
+        """🔴 PROCESSA QUOTE LIVE (in-play) per partite attualmente in corso"""
+        logger.info("🔴 Processing LIVE odds (in-play tracking)")
+
+        db = next(get_db())
+        try:
+            # Ottieni gli ID delle partite attualmente live dal provider
+            import httpx
+            api_key = "REDACTED"
+            url = "https://v3.football.api-sports.io/fixtures?live=all"
+
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(url, headers={"x-apisports-key": api_key})
+
+                if response.status_code == 200:
+                    data = response.json()
+                    live_fixtures = data.get('response', [])
+
+                    # Filtra solo partite davvero live
+                    truly_live_ids = []
+                    for fixture in live_fixtures:
+                        status = fixture.get('fixture', {}).get('status', {})
+                        live_statuses = ['1H', 'HT', '2H', 'ET', 'BT', 'P', 'LIVE', 'IN_PLAY', 'PLAYING']
+                        if status.get('short') in live_statuses:
+                            fixture_id = fixture.get('fixture', {}).get('id')
+                            if fixture_id:
+                                truly_live_ids.append(fixture_id)
+
+                    if truly_live_ids:
+                        # Limita a 10 partite per ciclo per non sovraccaricare
+                        limited_live_ids = truly_live_ids[:10]
+                        stats = await odds_collector.collect_live_odds_for_fixtures(limited_live_ids, db)
+                        logger.info(f"🔴 Live odds collected (in-play): {stats}")
+                    else:
+                        logger.info("🔴 No live fixtures found for in-play odds collection")
+
+        except Exception as e:
+            logger.error(f"Error in live odds processing: {str(e)}")
+        finally:
+            db.close()
+
     async def _process_daily_cleanup(self):
         """🧹 PROCESSA PULIZIA GIORNALIERA"""
         logger.info("🧹 Processing DAILY cleanup")

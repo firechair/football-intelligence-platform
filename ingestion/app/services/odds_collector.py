@@ -530,6 +530,160 @@ class OddsCollector:
                 
         db.commit()
 
+    async def collect_live_odds_for_fixtures(self, fixture_ids: List[int], db: Session) -> Dict[str, Any]:
+        """🎯 Raccolta quote LIVE (in-play) per partite attualmente in corso"""
+        logger.info(f"🎯 Starting LIVE odds collection for {len(fixture_ids)} fixtures")
+
+        collected_stats = {
+            "fixtures_processed": len(fixture_ids),
+            "quotes_collected": 0,
+            "bookmakers_found": [],
+            "markets_found": [],
+            "errors": []
+        }
+
+        # Rate limiting per API-Football (2 richieste/secondo)
+        semaphore = asyncio.Semaphore(2)
+
+        async def collect_single_fixture_odds(fixture_id: int):
+            async with semaphore:
+                try:
+                    # Chiamata diretta all'endpoint /odds/live per questo fixture
+                    live_odds_data = await football_api._make_request("odds/live", {"fixture": fixture_id})
+
+                    if live_odds_data and "response" in live_odds_data and len(live_odds_data["response"]) > 0:
+                        fixture_odds = live_odds_data["response"][0]
+
+                        # Processa i bookmaker per questo fixture live
+                        odds_saved = await self._process_live_fixture_odds(fixture_id, fixture_odds, db)
+
+                        if odds_saved > 0:
+                            logger.info(f"✅ Live odds collected for fixture {fixture_id}: {odds_saved} quotes")
+                            return odds_saved
+                        else:
+                            logger.warning(f"⚠️ No live odds saved for fixture {fixture_id}")
+                            return 0
+                    else:
+                        logger.warning(f"⚠️ No live odds available from API for fixture {fixture_id}")
+                        return 0
+
+                except Exception as e:
+                    error_msg = f"Error collecting live odds for fixture {fixture_id}: {str(e)}"
+                    logger.error(f"❌ {error_msg}")
+                    collected_stats["errors"].append(error_msg)
+                    return 0
+
+        # Processa tutti i fixture in parallelo con rate limiting
+        tasks = [collect_single_fixture_odds(fid) for fid in fixture_ids]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Conta i risultati
+        for result in results:
+            if isinstance(result, int):
+                collected_stats["quotes_collected"] += result
+
+        # Aggiorna statistiche finali
+        if collected_stats["quotes_collected"] > 0:
+            bookmaker_info = await self._get_bookmaker_info(db)
+            collected_stats["bookmakers_found"] = list(set(bookmaker_info.keys()))
+            collected_stats["markets_found"] = ["1X2"]  # Per ora solo 1X2 nelle live
+
+        logger.info(f"🎯 LIVE odds collection completed: {collected_stats}")
+        return collected_stats
+
+    async def _process_live_fixture_odds(self, fixture_id: int, fixture_odds: Dict[str, Any], db: Session) -> int:
+        """Processa le quote live per un singolo fixture"""
+        saved_count = 0
+
+        try:
+            # Estrai informazioni base
+            fixture_info = fixture_odds.get("fixture", {})
+            league_info = fixture_odds.get("league", {})
+            teams_info = fixture_odds.get("teams", {})
+
+            # I bookmaker per questo fixture live
+            bookmakers = fixture_odds.get("bookmakers", [])
+
+            for bookmaker_data in bookmakers:
+                bookmaker_id = bookmaker_data.get("id")
+                bookmaker_name = bookmaker_data.get("name", "Unknown")
+
+                # Aggiorna/ottieni info bookmaker
+                bookmaker_info = await self._get_or_create_bookmaker(db, bookmaker_id, bookmaker_name)
+
+                # Processa le scommesse per questo bookmaker
+                bets = bookmaker_data.get("bets", [])
+                for bet in bets:
+                    bet_name = bet.get("name", "").lower()
+
+                    # Per ora gestiamo solo Match Winner (1X2)
+                    if "match winner" in bet_name or "1x2" in bet_name or "full time result" in bet_name:
+                        saved_count += await self._process_live_1x2_bet(
+                            fixture_id, bookmaker_info, bet, db
+                        )
+
+        except Exception as e:
+            logger.error(f"Error processing live fixture odds for {fixture_id}: {str(e)}")
+
+        return saved_count
+
+    async def _process_live_1x2_bet(self, fixture_id: int, bookmaker_info: BookmakerInfo,
+                                   bet_data: Dict[str, Any], db: Session) -> int:
+        """Processa una scommessa 1X2 live"""
+        saved_count = 0
+
+        try:
+            values = bet_data.get("values", [])
+
+            # Trova i valori per Home, Draw, Away
+            home_odd = None
+            draw_odd = None
+            away_odd = None
+
+            for value in values:
+                val = value.get("value", "")
+                odd = value.get("odd")
+
+                if val == "Home" or val == "1":
+                    home_odd = float(odd) if odd else None
+                elif val == "Draw" or val == "X":
+                    draw_odd = float(odd) if odd else None
+                elif val == "Away" or val == "2":
+                    away_odd = float(odd) if odd else None
+
+            # Salva le quote se abbiamo tutte e 3
+            if home_odd and draw_odd and away_odd:
+                # Crea record per ogni mercato
+                markets_data = [
+                    ("1", home_odd),
+                    ("X", draw_odd),
+                    ("2", away_odd)
+                ]
+
+                for market_name, odd_value in markets_data:
+                    # Crea record ExtendedOddsHistory con flag is_pre_match=False
+                    odds_record = ExtendedOddsHistory(
+                        fixture_id=fixture_id,
+                        market_name=market_name,
+                        market_type="1x2",
+                        bookmaker_id=bookmaker_info.id,
+                        bookmaker_name=bookmaker_info.name,
+                        odd_value=odd_value,
+                        is_pre_match=False,  # Questa è una quota LIVE
+                        collected_at=datetime.now()
+                    )
+
+                    db.add(odds_record)
+                    saved_count += 1
+
+                # Aggiorna tracking status
+                await self._update_fixture_tracking(fixture_id, db)
+
+        except Exception as e:
+            logger.error(f"Error processing live 1X2 bet: {str(e)}")
+
+        return saved_count
+
 # Singleton instance
 odds_collector = OddsCollector()
 
