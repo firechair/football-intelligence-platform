@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta
+from typing import List
 
 from app.services.fixtures_collector import fixtures_collector
 from app.services.odds_collector import odds_collector
