@@ -704,8 +704,7 @@ class OddsCollector:
         total_processed = 0
         total_quotes_collected = 0
         total_errors = []
-        max_fixtures_per_day = 20  # Ridotto per stabilità (quote sono più pesanti)
-        max_total_fixtures = 50    # Limite totale ridotto per evitare timeout
+        # NO LIMITS - Processa tutte le partite per ogni giorno
 
         # Per ogni giorno futuro (a partire da domani)
         for day_offset in range(1, days_ahead + 1):
@@ -727,10 +726,7 @@ class OddsCollector:
             fixture_ids = [f.fixture_id for f in day_fixtures]
             logger.info(f"  📊 Found {len(fixture_ids)} fixtures for {target_date}")
 
-            # Limita fixtures per giorno per stabilità
-            if len(fixture_ids) > max_fixtures_per_day:
-                logger.info(f"  ⚠️ Limiting to {max_fixtures_per_day} fixtures per day (found {len(fixture_ids)})")
-                fixture_ids = fixture_ids[:max_fixtures_per_day]
+            # NO LIMITS - Processa tutte le partite del giorno
 
             logger.info(f"  🎯 Processing {len(fixture_ids)} fixtures for {target_date}")
 
@@ -746,10 +742,7 @@ class OddsCollector:
                 logger.info(f"  📦 Processing batch {batch_start//batch_size + 1}/{(len(fixture_ids) + batch_size - 1)//batch_size} ({len(batch_fixture_ids)} fixtures)")
 
                 for i, fixture_id in enumerate(batch_fixture_ids):
-                    # Controlla limite totale
-                    if total_processed >= max_total_fixtures:
-                        logger.info(f"  🛑 Reached total limit of {max_total_fixtures} fixtures - stopping")
-                        break
+                    # NO LIMITS - Continua fino alla fine
 
                     try:
                         batch_pos = batch_start + i + 1
@@ -784,16 +777,11 @@ class OddsCollector:
                     logger.info(f"  ⏳ Batch completed, pausing 5 seconds before next batch...")
                     await asyncio.sleep(5)
 
-                # Controllo limite raggiunto
-                if total_processed >= max_total_fixtures:
-                    break
+                # NO LIMITS - Continua con il prossimo batch
 
             logger.info(f"  📊 Day {target_date} summary: {day_quotes_collected} quotes collected, {len(day_errors)} errors")
 
-            # Se abbiamo raggiunto il limite totale, fermiamoci
-            if total_processed >= max_total_fixtures:
-                logger.info(f"🛑 Reached total limit of {max_total_fixtures} fixtures across all days")
-                break
+            # NO LIMITS - Continua con tutti i giorni
 
             # Pausa tra giorni per ridurre carico complessivo
             logger.info(f"  ⏳ Day {target_date} completed, pausing 10 seconds before next day...")

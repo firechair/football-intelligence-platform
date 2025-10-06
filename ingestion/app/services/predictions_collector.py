@@ -178,7 +178,7 @@ class PredictionsCollector:
         total_collected = 0
         total_updated = 0
         total_errors = []
-        max_total_fixtures = 30  # Limite ridotto per stabilità (predizioni sono più leggere)
+        # NO LIMITS - Processa tutte le partite per ogni giorno
 
         # Per ogni giorno futuro (a partire da domani)
         for day_offset in range(1, days_ahead + 1):
@@ -209,13 +209,10 @@ class PredictionsCollector:
             day_errors = []
 
             for i, fixture_id in enumerate(fixture_ids):
-                # Controlla limite totale
-                if total_processed >= max_total_fixtures:
-                    logger.info(f"  🛑 Reached total limit of {max_total_fixtures} fixtures - stopping")
-                    break
+                    # NO LIMITS - Continua fino alla fine
 
                 try:
-                    logger.info(f"  🔮 Processing prediction {total_processed + 1}/{max_total_fixtures} for fixture {fixture_id} ({target_date})")
+                    logger.info(f"  🔮 Processing prediction {total_processed + 1} for fixture {fixture_id} ({target_date})")
 
                     # Chiamata API singola per prediction
                     prediction_data = await football_api.get_predictions_for_fixture(fixture_id)
@@ -252,10 +249,7 @@ class PredictionsCollector:
 
             logger.info(f"  📊 Day {target_date} summary: {day_collected} collected, {day_updated} updated, {len(day_errors)} errors")
 
-            # Se abbiamo raggiunto il limite totale, fermiamoci
-            if total_processed >= max_total_fixtures:
-                logger.info(f"🛑 Reached total limit of {max_total_fixtures} fixtures across all days")
-                break
+                # NO LIMITS - Continua con tutti i giorni
 
         logger.info(f"🔮 Future predictions collection completed: {total_collected} collected, {total_updated} updated, {len(total_errors)} errors across {total_processed} fixtures")
 
