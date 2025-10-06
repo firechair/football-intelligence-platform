@@ -91,13 +91,13 @@ async def startup_event():
         logger.error(f"Error creating database tables: {e}")
     
     # Avvia scheduler in background senza bloccarlo
-            # Avvia scheduler giornaliero
-            if not scheduler.running:
-                asyncio.create_task(scheduler.start())
+    # Avvia scheduler giornaliero
+    if not scheduler.running:
+        asyncio.create_task(scheduler.start())
 
-            # Avvia monitoraggio continuo live (processo separato)
-            if not live_odds_monitor.running:
-                asyncio.create_task(live_odds_monitor.start())
+    # Avvia monitoraggio continuo live (processo separato)
+    if not live_odds_monitor.running:
+        asyncio.create_task(live_odds_monitor.start())
 
 @app.on_event("shutdown")
 async def shutdown_event():
