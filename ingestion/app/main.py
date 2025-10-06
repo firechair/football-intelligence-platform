@@ -14,7 +14,7 @@ from datetime import datetime
 
 from app.core.config import settings
 from app.api import historical, charts, admin, predictions, homepage, fixtures, odds, assets, database_admin
-from app.core.scheduler import scheduler
+from app.core.scheduler import scheduler, live_odds_monitor
 
 # Logging setup
 logging.basicConfig(level=getattr(logging, settings.LOG_LEVEL))
@@ -91,13 +91,19 @@ async def startup_event():
         logger.error(f"Error creating database tables: {e}")
     
     # Avvia scheduler in background senza bloccarlo
-    if not scheduler.running:
-        asyncio.create_task(scheduler.start())
+            # Avvia scheduler giornaliero
+            if not scheduler.running:
+                asyncio.create_task(scheduler.start())
+
+            # Avvia monitoraggio continuo live (processo separato)
+            if not live_odds_monitor.running:
+                asyncio.create_task(live_odds_monitor.start())
 
 @app.on_event("shutdown")
 async def shutdown_event():
     logger.info("Shutting down FIP Odds Tracker")
     await scheduler.stop()
+    await live_odds_monitor.stop()
 
 @app.get("/")
 async def root():

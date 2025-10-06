@@ -530,7 +530,7 @@ class OddsCollector:
                 
         db.commit()
 
-    async def collect_live_odds_for_fixtures(self, fixture_ids: List[int], db: Session) -> Dict[str, Any]:
+    async def collect_live_odds_for_fixtures(self, fixture_ids: List[int], db: Session, rate_limit_semaphore: asyncio.Semaphore = None) -> Dict[str, Any]:
         """🎯 Raccolta quote LIVE (in-play) per partite attualmente in corso"""
         logger.info(f"🎯 Starting LIVE odds collection for {len(fixture_ids)} fixtures")
 
@@ -542,8 +542,8 @@ class OddsCollector:
             "errors": []
         }
 
-        # Rate limiting per API-Football (2 richieste/secondo)
-        semaphore = asyncio.Semaphore(2)
+        # Usa rate limiting esterno se fornito (dal LiveOddsMonitor), altrimenti default
+        semaphore = rate_limit_semaphore if rate_limit_semaphore else asyncio.Semaphore(2)
 
         async def collect_single_fixture_odds(fixture_id: int):
             async with semaphore:
