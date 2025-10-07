@@ -46,6 +46,14 @@ const nextConfig = {
         protocol: 'http',
         hostname: 'localhost',
         port: '9000',
+      },
+      {
+        protocol: 'https',
+        hostname: 'example.invalid',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.railway.app',
       }
     ],
     formats: ['image/webp', 'image/avif'],
@@ -127,6 +135,12 @@ const nextConfig = {
     // optimizeCss: true, // Disabled due to critters module issue
     optimizePackageImports: ['@radix-ui/react-icons', 'lucide-react'],
   },
+
+  // Ensure static assets are served correctly in development
+  assetPrefix: process.env.NODE_ENV === 'production' ? undefined : '',
+
+  // Configure static file serving
+  trailingSlash: false,
   
   // Security headers
   async headers() {
