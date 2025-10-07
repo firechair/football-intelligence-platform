@@ -636,18 +636,23 @@ async def _get_fixtures_by_date(target_date: date, league_id: Optional[int], db:
 
                 fixture_data = await _build_fixture_response_optimized(fixture, fixture_odds, db)
 
-                # TEMPORANEO: Mostra tutte le partite per testing, anche senza quote
-                # TODO: Ripristinare il filtro quote 1X2 quando il processo di collezione funziona
+                # FILTRO: Solo partite con quote 1X2 valide (come richiesto dal frontend)
                 odds = fixture_data.best_odds
-                has_1x2_odds = any(odds.get(market) and len(odds.get(market, {})) > 0 for market in ["1", "X", "2"])
+                has_1_odds = odds.get("1") and len(odds.get("1", {})) > 0
+                has_x_odds = odds.get("X") and len(odds.get("X", {})) > 0
+                has_2_odds = odds.get("2") and len(odds.get("2", {})) > 0
+                has_1x2_odds = has_1_odds and has_x_odds and has_2_odds
 
-                # Per ora, includi sempre le partite (con o senza quote)
-                matches.append(fixture_data)
-                successful_count += 1
+                # Log dettagliato per capire la discrepanza 132→50
+                total_markets = len([m for m in ["1", "X", "2"] if odds.get(m) and len(odds.get(m, {})) > 0])
+                bookmaker_count = sum(len(odds.get(market, {})) for market in ["1", "X", "2"])
 
-                if not has_1x2_odds:
-                    # Log partite senza quote per debug
-                    print(f"DEBUG: Fixture {fixture.fixture_id} has no 1X2 odds but included for testing")
+                if has_1x2_odds:
+                    matches.append(fixture_data)
+                    successful_count += 1
+                    print(f"✅ INCLUDED: Fixture {fixture.fixture_id} - Complete 1X2 odds (markets: {total_markets}/3, bookmakers: {bookmaker_count})")
+                else:
+                    print(f"❌ FILTERED: Fixture {fixture.fixture_id} - Missing 1X2 odds (1:{has_1_odds}, X:{has_x_odds}, 2:{has_2_odds}) - Has {total_markets}/3 markets")
             except Exception as e:
                 # Log error but continue with other fixtures
                 print(f"Error building fixture response for {fixture.fixture_id}: {str(e)}")
