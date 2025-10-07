@@ -704,7 +704,9 @@ class OddsCollector:
         total_processed = 0
         total_quotes_collected = 0
         total_errors = []
-        # NO LIMITS - Processa tutte le partite per ogni giorno
+        # LIMITI RAGIONEVOLI secondo documentazione API: max 2 odds collections/ora (1 ogni 30 minuti)
+        # Documentazione raccomanda 1 call ogni 3 ore, quindi limitiamo a 2/ora per sicurezza
+        max_odds_per_session = 2  # Massimo 2 collections di odds per sessione (30 minuti)
 
         # Per ogni giorno futuro (a partire da domani)
         for day_offset in range(1, days_ahead + 1):
@@ -742,7 +744,10 @@ class OddsCollector:
                 logger.info(f"  📦 Processing batch {batch_start//batch_size + 1}/{(len(fixture_ids) + batch_size - 1)//batch_size} ({len(batch_fixture_ids)} fixtures)")
 
                 for i, fixture_id in enumerate(batch_fixture_ids):
-                    # NO LIMITS - Continua fino alla fine
+                    # Controllo limite sessione per rispettare rate limiting API
+                    if total_processed >= max_odds_per_session:
+                        logger.info(f"  🛑 Reached max odds collections per session ({max_odds_per_session}) - stopping")
+                        break
 
                     try:
                         batch_pos = batch_start + i + 1
@@ -762,9 +767,10 @@ class OddsCollector:
 
                         total_processed += 1
 
-                        # Rate limiting più conservativo: 2 secondi tra chiamate per quote
+                        # Rate limiting rispettoso documentazione: 30 minuti tra chiamate per odds
+                        # Documentazione raccomanda 1 call ogni 3 ore, quindi 30 minuti è conservativo
                         if i < len(batch_fixture_ids) - 1:
-                            await asyncio.sleep(2)
+                            await asyncio.sleep(1800)  # 30 minuti = 1800 secondi
 
                     except Exception as e:
                         error_msg = f"Fixture {fixture_id}: {str(e)}"

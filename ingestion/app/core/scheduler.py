@@ -193,7 +193,8 @@ class OddsTrackingScheduler:
                     db.close()
 
                 # Aspetta prima del prossimo ciclo (non sovrapporsi con macro)
-                await asyncio.sleep(30 * 60)  # 30 minuti
+                # Rate limiting: aspettiamo 3 ore come raccomandato dalla documentazione API per odds
+                await asyncio.sleep(3 * 60 * 60)  # 3 ore = 10800 secondi
 
             except Exception as e:
                 logger.error(f"🎯 Continuous odds error: {str(e)}")

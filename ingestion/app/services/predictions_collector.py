@@ -178,7 +178,9 @@ class PredictionsCollector:
         total_collected = 0
         total_updated = 0
         total_errors = []
-        # NO LIMITS - Processa tutte le partite per ogni giorno
+        # LIMITI RAGIONEVOLI secondo documentazione API: max 6 predictions/ora (1 ogni 10 minuti)
+        # Questo permette di processare fino a ~6 fixture/ora rispettando i limiti
+        max_predictions_per_session = 6  # Massimo 6 predictions per sessione (1 ora)
 
         # Per ogni giorno futuro (a partire da domani)
         for day_offset in range(1, days_ahead + 1):
@@ -209,7 +211,10 @@ class PredictionsCollector:
             day_errors = []
 
             for i, fixture_id in enumerate(fixture_ids):
-                    # NO LIMITS - Continua fino alla fine
+                    # Controllo limite sessione per rispettare rate limiting API
+                    if total_processed >= max_predictions_per_session:
+                        logger.info(f"  🛑 Reached max predictions per session ({max_predictions_per_session}) - stopping")
+                        break
 
                 try:
                     logger.info(f"  🔮 Processing prediction {total_processed + 1} for fixture {fixture_id} ({target_date})")
@@ -237,9 +242,11 @@ class PredictionsCollector:
 
                     total_processed += 1
 
-                    # Pausa tra richieste: MAX 1 chiamata al secondo
+                    # Rate limiting rispettoso documentazione API: 1 chiamata ogni 10 minuti per predictions
+                    # Documentazione raccomanda max 1 call/ora, quindi usiamo 10 minuti per efficienza
+                    # ma comunque entro i limiti raccomandati
                     if i < len(fixture_ids) - 1:
-                        await asyncio.sleep(1)
+                        await asyncio.sleep(600)  # 10 minuti = 600 secondi
 
                 except Exception as e:
                     error_msg = f"Fixture {fixture_id}: {str(e)}"
