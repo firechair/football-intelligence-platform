@@ -1487,15 +1487,6 @@ class IntentDetector:
         elif any(x in msg for x in ["aiuto", "help", "come funziona"]):
             intent = "help"
             patterns_matched.append("help")
-            # Richiesta generica di partite per un periodo temporale
-            intent = "generic_match_request"
-            confidence = 0.9
-            patterns_matched.append("generic_matches")
-        elif any(x in msg for x in ["che partite", "quali partite", "che incontri", "quali incontri", "che giochi", "quali giochi", "che match", "quali match"]) and any(x in msg for x in ["oggi", "today", "domani", "tomorrow", "ci sono"]):
-            # Pattern specifico italiano per richieste di partite
-            intent = "generic_match_request"
-            confidence = 0.95
-            patterns_matched.append("generic_matches_italian")
         # REGOLA 7: Riconoscimento richieste troppo vaghe
         elif self._is_vague_request(msg):
             intent = "vague_request"
