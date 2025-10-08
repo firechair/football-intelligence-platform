@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, func, JSON, Boolean, DECIMAL
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, func, JSON, Boolean, DECIMAL, Index
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
@@ -107,10 +107,21 @@ class OddsHistory(Base):
     id = Column(Integer, primary_key=True, index=True)
     fixture_id = Column(Integer, nullable=False, index=True)
     market_name = Column(String(100), nullable=False)
+    market_type = Column(String(50), nullable=True, index=True)  # "1x2", "over_under", "both_teams_to_score", etc.
     bookmaker = Column(String(100), nullable=False, index=True)
+    bookmaker_id = Column(Integer, nullable=True, index=True)
     odd_value = Column(DECIMAL(8,3), nullable=False)
     timestamp = Column(DateTime, server_default=func.now())
+    collected_at = Column(DateTime, server_default=func.now())  # When the odd was actually collected
     is_best_odd = Column(Boolean, default=False, index=True)
+    is_live = Column(Boolean, default=False, index=True)  # Whether this is a live/pre-match odd
+    minutes_elapsed = Column(Integer, nullable=True)  # For live odds: minutes played
+    
+    # Index for efficient querying by fixture and timestamp
+    __table_args__ = (
+        Index('ix_odds_history_fixture_timestamp', 'fixture_id', 'timestamp'),
+        Index('ix_odds_history_bookmaker_market', 'bookmaker', 'market_name', 'timestamp'),
+    )
 
 class UserBettingPreferences(Base):
     __tablename__ = "user_betting_preferences"
