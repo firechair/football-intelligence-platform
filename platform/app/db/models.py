@@ -153,3 +153,126 @@ class SmartAlerts(Base):
 
     # Relationship
     user = relationship("User", backref="smart_alerts")
+
+# ==========================================
+# OPERATOR MODELS - Shared with FIP Operator
+# ==========================================
+
+class FixtureTrackingStatus(Base):
+    """Stato del tracking per ogni partita"""
+    __tablename__ = "fixture_tracking_status"
+
+    id = Column(Integer, primary_key=True)
+    fixture_id = Column(Integer, nullable=False, unique=True, index=True)
+
+    # Identificazione partita
+    league_id = Column(Integer, nullable=True, index=True)
+    league_name = Column(String(200), nullable=True)
+    country_name = Column(String(100), nullable=True)
+    home_team = Column(String(100), nullable=False)
+    away_team = Column(String(100), nullable=False)
+    fixture_date = Column(DateTime, nullable=False, index=True)
+
+    # Loghi da API-Football
+    home_team_logo = Column(String(500), nullable=True)
+    away_team_logo = Column(String(500), nullable=True)
+
+    # Stato della partita
+    fixture_status = Column(String(20), nullable=True)  # NS, FT, etc.
+    fixture_elapsed = Column(Integer, nullable=True)
+
+    # Punteggio
+    goals_home = Column(Integer, nullable=True)
+    goals_away = Column(Integer, nullable=True)
+
+    # Statistiche aggiuntive
+    league_round = Column(String(50), nullable=True)
+    league_season = Column(String(20), nullable=True)
+
+    # Tracking
+    is_tracked = Column(Boolean, default=False, index=True)
+    last_updated = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    # Odds tracking
+    odds_updated = Column(DateTime, nullable=True)
+
+    # Indexes
+    __table_args__ = (
+        Index('idx_fixture_date_status', 'fixture_date', 'fixture_status'),
+        Index('idx_league_fixture', 'league_id', 'fixture_id'),
+    )
+
+class ExtendedOddsHistory(Base):
+    """Storico completo delle quote per ogni partita"""
+    __tablename__ = "extended_odds_history"
+
+    id = Column(Integer, primary_key=True)
+    fixture_id = Column(Integer, nullable=False, index=True)
+
+    # Bookmaker info
+    bookmaker_id = Column(Integer, nullable=False)
+    bookmaker_name = Column(String(100), nullable=True)
+
+    # Tipo di scommessa (1x2, BTTS, Over/Under, etc.)
+    bet_type = Column(String(50), nullable=False)
+
+    # Quote specifiche
+    home_win = Column(DECIMAL(10, 2), nullable=True)  # 1
+    draw = Column(DECIMAL(10, 2), nullable=True)      # X
+    away_win = Column(DECIMAL(10, 2), nullable=True)  # 2
+
+    # Quote aggiuntive per altri mercati
+    btts_yes = Column(DECIMAL(10, 2), nullable=True)
+    btts_no = Column(DECIMAL(10, 2), nullable=True)
+    over_25 = Column(DECIMAL(10, 2), nullable=True)
+    under_25 = Column(DECIMAL(10, 2), nullable=True)
+
+    # Timestamp
+    recorded_at = Column(DateTime, nullable=False, server_default=func.now(), index=True)
+
+    # Indexes
+    __table_args__ = (
+        Index('idx_fixture_bookmaker_bet', 'fixture_id', 'bookmaker_id', 'bet_type'),
+        Index('idx_recorded_at', 'recorded_at'),
+    )
+
+class MatchPredictions(Base):
+    """Predizioni AI per le partite"""
+    __tablename__ = "match_predictions"
+
+    id = Column(Integer, primary_key=True)
+    fixture_id = Column(Integer, nullable=False, unique=True, index=True)
+
+    # Predizioni vincitore
+    winner_prediction = Column(String(20), nullable=True)  # home, away, draw
+    winner_probability = Column(DECIMAL(5, 2), nullable=True)  # Percentuale 0-100
+
+    # Predizioni goal
+    goals_prediction = Column(String(10), nullable=True)  # Es: "2-1", "1-0"
+    total_goals_prediction = Column(DECIMAL(3, 1), nullable=True)  # Over/under
+
+    # Altre predizioni
+    btts_prediction = Column(Boolean, nullable=True)  # Both teams to score
+    btts_probability = Column(DECIMAL(5, 2), nullable=True)
+
+    # Statistiche di accuratezza
+    prediction_accuracy = Column(DECIMAL(5, 2), nullable=True)
+
+    # Timestamp
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+class BookmakerInfo(Base):
+    """Informazioni sui bookmaker"""
+    __tablename__ = "bookmaker_info"
+
+    id = Column(Integer, primary_key=True)
+    bookmaker_id = Column(Integer, nullable=False, unique=True, index=True)
+    name = Column(String(100), nullable=False)
+    logo = Column(String(500), nullable=True)
+
+    # Stato
+    is_active = Column(Boolean, default=True, index=True)
+
+    # Timestamp
+    created_at = Column(DateTime, server_default=func.now())
