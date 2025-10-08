@@ -404,7 +404,8 @@ def list_users(db: Session = Depends(get_db)):
     import os
     
     # URL del database Railway
-    railway_db_url = "postgresql://postgres:REDACTED@example.invalid:5432/railway"
+    # Usa la configurazione del database dalla config
+    from app.core.config import DATABASE_URL
     
     try:
         # Prima provo con il database locale (SQLite)
@@ -997,7 +998,8 @@ def cleanup_users_except_firechair(
         )
     
     # URL del database Railway
-    railway_db_url = "postgresql://postgres:REDACTED@example.invalid:5432/railway"
+    # Usa la configurazione del database dalla config
+    from app.core.config import DATABASE_URL
     
     local_result = {}
     railway_result = {}
