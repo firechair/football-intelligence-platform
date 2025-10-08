@@ -1461,7 +1461,19 @@ class IntentDetector:
         elif any(x in msg for x in ["statistica", "statistiche", "stats"]):
             intent = "statistics"
             patterns_matched.append("statistics")
-        elif any(x in msg for x in ["predizioni", "predictions", "pronostico", "previsioni", "chi vince", "vincerà", "analisi", "migliori predizioni", "predizioni migliori", "profittevoli", "profitto", "guadagni", "guadagno", "redditizio", "redditizi", "vincita", "vincite", "importanti"]) or self._detect_complex_prediction_patterns(msg):
+        # CONTROLLO PRIORITARIO: Richieste di partite hanno priorità su predizioni
+        elif any(x in msg for x in ["partite", "incontri", "matches", "giochi"]) and any(x in msg for x in ["oggi", "today", "domani", "tomorrow", "questa settimana", "this week", "ci sono", "sono in programma", "sono programmate"]):
+            # Richiesta generica di partite per un periodo temporale
+            intent = "generic_match_request"
+            confidence = 0.9
+            patterns_matched.append("generic_matches")
+        elif any(x in msg for x in ["che partite", "quali partite", "che incontri", "quali incontri", "che giochi", "quali giochi", "che match", "quali match"]) and any(x in msg for x in ["oggi", "today", "domani", "tomorrow", "ci sono"]):
+            # Pattern specifico italiano per richieste di partite
+            intent = "generic_match_request"
+            confidence = 0.95
+            patterns_matched.append("generic_matches_italian")
+        elif any(x in msg for x in ["predizioni", "predictions", "pronostico", "previsioni", "chi vince", "vincerà", "analisi", "migliori predizioni", "predizioni migliori", "profittevoli", "profitto", "guadagni", "guadagno", "redditizio", "redditizi", "vincita", "vincite"]) or self._detect_complex_prediction_patterns(msg):
+            # Predizioni - escluse le richieste di partite con "importanti"
             intent = "predictions"
             patterns_matched.append("predictions")
         elif any(x in msg for x in ["quando gioca", "calendario"]):
@@ -1475,7 +1487,6 @@ class IntentDetector:
         elif any(x in msg for x in ["aiuto", "help", "come funziona"]):
             intent = "help"
             patterns_matched.append("help")
-        elif any(x in msg for x in ["partite", "incontri", "matches", "giochi"]) and any(x in msg for x in ["oggi", "today", "domani", "tomorrow", "questa settimana", "this week", "ci sono", "sono in programma", "sono programmate"]):
             # Richiesta generica di partite per un periodo temporale
             intent = "generic_match_request"
             confidence = 0.9
