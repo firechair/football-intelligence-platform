@@ -1468,7 +1468,8 @@ class IntentDetector:
             # Navigazione solo per richieste esplicite di calendario/"quando gioca" (senza destinazione specifica sarà gestito a livello superiore)
             intent = "navigation"
             patterns_matched.append("navigation")
-        elif any(x in msg for x in ["ciao", "buongiorno", "salve", "hello", "hi", "come stai", "come va"]):
+        # CONTROLLO PRIORITARIO: Se contiene parole chiave calcistiche, NON classificare come greeting
+        elif any(x in msg for x in ["ciao", "buongiorno", "salve", "hello", "hi", "come stai", "come va"]) and not any(x in msg for x in ["partite", "incontri", "matches", "campionati", "squadre", "calcio", "football", "serie a", "premier", "liga", "bundesliga", "champions", "europa", "mondiali", "qualificazioni", "predizioni", "quote", "statistiche", "importanti"]):
             intent = "greeting"
             patterns_matched.append("greeting")
         elif any(x in msg for x in ["aiuto", "help", "come funziona"]):
