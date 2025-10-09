@@ -1461,21 +1461,22 @@ class IntentDetector:
         elif any(x in msg for x in ["statistica", "statistiche", "stats"]):
             intent = "statistics"
             patterns_matched.append("statistics")
-        # CONTROLLO PRIORITARIO: Richieste di partite hanno priorità su predizioni
-        elif any(x in msg for x in ["partite", "incontri", "matches", "giochi"]) and any(x in msg for x in ["oggi", "today", "domani", "tomorrow", "questa settimana", "this week", "ci sono", "sono in programma", "sono programmate"]):
-            # Richiesta generica di partite per un periodo temporale
+        # CONTROLLO PRIORITARIO: Predizioni hanno priorità quando contengono parole chiave specifiche
+        elif any(x in msg for x in ["predizioni", "predictions", "pronostico", "previsioni", "chi vince", "vincerà", "analisi", "migliori predizioni", "predizioni migliori", "profittevoli", "sicure", "profitto", "guadagni", "guadagno", "redditizio", "redditizi", "vincita", "vincite"]) or self._detect_complex_prediction_patterns(msg):
+            # Predizioni hanno priorità anche se contengono "partite"
+            intent = "predictions"
+            patterns_matched.append("predictions")
+        # CONTROLLO PER PARTITE: Solo se NON contiene parole chiave di predizioni
+        elif any(x in msg for x in ["partite", "incontri", "matches", "giochi"]) and any(x in msg for x in ["oggi", "today", "domani", "tomorrow", "questa settimana", "this week", "ci sono", "sono in programma", "sono programmate"]) and not any(x in msg for x in ["profittevoli", "sicure", "predizioni", "pronostico", "previsioni"]):
+            # Richiesta generica di partite per un periodo temporale (solo se non è predizione)
             intent = "generic_match_request"
             confidence = 0.9
             patterns_matched.append("generic_matches")
-        elif any(x in msg for x in ["che partite", "quali partite", "che incontri", "quali incontri", "che giochi", "quali giochi", "che match", "quali match"]) and any(x in msg for x in ["oggi", "today", "domani", "tomorrow", "ci sono"]):
-            # Pattern specifico italiano per richieste di partite
+        elif any(x in msg for x in ["che partite", "quali partite", "che incontri", "quali incontri", "che giochi", "quali giochi", "che match", "quali match"]) and any(x in msg for x in ["oggi", "today", "domani", "tomorrow", "ci sono"]) and not any(x in msg for x in ["profittevoli", "sicure", "predizioni", "pronostico", "previsioni"]):
+            # Pattern specifico italiano per richieste di partite (solo se non è predizione)
             intent = "generic_match_request"
             confidence = 0.95
             patterns_matched.append("generic_matches_italian")
-        elif any(x in msg for x in ["predizioni", "predictions", "pronostico", "previsioni", "chi vince", "vincerà", "analisi", "migliori predizioni", "predizioni migliori", "profittevoli", "profitto", "guadagni", "guadagno", "redditizio", "redditizi", "vincita", "vincite"]) or self._detect_complex_prediction_patterns(msg):
-            # Predizioni - escluse le richieste di partite con "importanti"
-            intent = "predictions"
-            patterns_matched.append("predictions")
         elif any(x in msg for x in ["quando gioca", "calendario"]):
             # Navigazione solo per richieste esplicite di calendario/"quando gioca" (senza destinazione specifica sarà gestito a livello superiore)
             intent = "navigation"
