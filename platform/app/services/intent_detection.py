@@ -1462,7 +1462,7 @@ class IntentDetector:
             intent = "statistics"
             patterns_matched.append("statistics")
         # CONTROLLO PRIORITARIO: Predizioni hanno priorità quando contengono parole chiave specifiche
-        elif any(x in msg for x in ["predizioni", "predictions", "pronostico", "previsioni", "chi vince", "vincerà", "analisi", "migliori predizioni", "predizioni migliori", "profittevoli", "sicure", "profitto", "guadagni", "guadagno", "redditizio", "redditizi", "vincita", "vincite"]) or self._detect_complex_prediction_patterns(msg):
+        elif any(x in msg for x in ["predizioni", "predictions", "pronostico", "previsioni", "chi vince", "vincerà", "analisi", "migliori predizioni", "predizioni migliori", "profittevoli", "sicure", "profitto", "guadagni", "guadagno", "redditizio", "redditizi", "vincita", "vincite", "partite profittevoli", "partite sicure"]) or self._detect_complex_prediction_patterns(msg) or "partite profittevoli" in msg or "partite sicure" in msg:
             # Predizioni hanno priorità anche se contengono "partite"
             intent = "predictions"
             patterns_matched.append("predictions")
