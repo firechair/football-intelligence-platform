@@ -1458,7 +1458,7 @@ class IntentDetector:
                 mo = mm.group(1).upper()
                 entities["market_outcome"] = mo
             patterns_matched.append("bet_analysis")
-        elif any(x in msg for x in ["statistica", "statistiche", "stats"]):
+        elif any(x in msg for x in ["statistica", "statistiche", "stats", "statistiche squadra", "statistiche squadre"]):
             intent = "statistics"
             patterns_matched.append("statistics")
         # CONTROLLO PRIORITARIO: Predizioni hanno priorità quando contengono parole chiave specifiche
