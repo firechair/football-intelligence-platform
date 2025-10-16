@@ -39,9 +39,8 @@ BASE_URL = os.getenv("BASE_URL", "https://example.invalid")
 # Redis Configuration (for rate limiting)
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
-# OpenAI Configuration
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
+# OpenRouter Configuration (handled in llm_chat.py)
+# OPENROUTER_API_KEY should be set as environment variable
 
 # CORS Configuration
 DEFAULT_ORIGINS = "http://localhost:3000,http://localhost:5173,https://example.invalid"

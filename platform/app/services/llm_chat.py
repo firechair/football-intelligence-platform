@@ -8,7 +8,7 @@ from fastapi import HTTPException, status
 # Read sensitive data from environment variables
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 OPENROUTER_API_URL = os.getenv("OPENROUTER_API_URL", "https://openrouter.ai/api/v1/chat/completions")
-DEFAULT_MODEL = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-r1:free")
+DEFAULT_MODEL = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-chat-v3-0324:free")
 HTTP_REFERER = os.getenv("OPENROUTER_HTTP_REFERER", "https://example.invalid")
 X_TITLE = os.getenv("OPENROUTER_TITLE", "FIP")
 
