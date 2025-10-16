@@ -39,6 +39,10 @@ BASE_URL = os.getenv("BASE_URL", "https://example.invalid")
 # Redis Configuration (for rate limiting)
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
+# OpenAI Configuration
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
+
 # CORS Configuration
 DEFAULT_ORIGINS = "http://localhost:3000,http://localhost:5173,https://example.invalid"
 ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", DEFAULT_ORIGINS).split(",") if o.strip()]
