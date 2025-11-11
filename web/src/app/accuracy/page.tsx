@@ -15,7 +15,8 @@ import {
   RefreshCw,
   Calendar,
   Trophy,
-  Goal
+  Goal,
+  Trash2
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -61,6 +62,7 @@ export default function AccuracyPage() {
   const [results, setResults] = useState<AccuracyResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [evaluating, setEvaluating] = useState(false);
+  const [cleaning, setCleaning] = useState(false);
 
   const fetchSummary = async () => {
     try {
@@ -109,6 +111,29 @@ export default function AccuracyPage() {
     }
   };
 
+  const cleanupPredictions = async () => {
+    setCleaning(true);
+    try {
+      const response = await fetch('/api/football/cleanup/predictions?days_back=30', {
+        method: 'POST',
+      });
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success('Pulizia predizioni completata!');
+        // Ricarica i dati per riflettere le modifiche
+        await fetchSummary();
+      } else {
+        toast.error('Errore nella pulizia: ' + (data.error || 'Errore sconosciuto'));
+      }
+    } catch (error) {
+      toast.error('Errore di connessione');
+      console.error('Error cleaning predictions:', error);
+    } finally {
+      setCleaning(false);
+    }
+  };
+
   useEffect(() => {
     fetchSummary();
     fetchResults();
@@ -141,18 +166,34 @@ export default function AccuracyPage() {
           </p>
         </div>
 
-        <Button
-          onClick={evaluateAccuracy}
-          disabled={evaluating}
-          className="flex items-center gap-2"
-        >
-          {evaluating ? (
-            <RefreshCw className="h-4 w-4 animate-spin" />
-          ) : (
-            <BarChart3 className="h-4 w-4" />
-          )}
-          {evaluating ? 'Valutando...' : 'Valuta Accuratezza'}
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            onClick={evaluateAccuracy}
+            disabled={evaluating}
+            className="flex items-center gap-2"
+          >
+            {evaluating ? (
+              <RefreshCw className="h-4 w-4 animate-spin" />
+            ) : (
+              <BarChart3 className="h-4 w-4" />
+            )}
+            {evaluating ? 'Valutando...' : 'Valuta Accuratezza'}
+          </Button>
+
+          <Button
+            onClick={cleanupPredictions}
+            disabled={cleaning}
+            variant="outline"
+            className="flex items-center gap-2"
+          >
+            {cleaning ? (
+              <RefreshCw className="h-4 w-4 animate-spin" />
+            ) : (
+              <Trash2 className="h-4 w-4" />
+            )}
+            {cleaning ? 'Pulendo...' : 'Pulisci Vecchie'}
+          </Button>
+        </div>
       </div>
 
       <Tabs defaultValue="summary" className="space-y-6">
