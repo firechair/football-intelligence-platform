@@ -205,6 +205,48 @@ class FootballAPIClient:
         
         return results
 
+    async def get_finished_fixtures_by_date_range(self, from_date: str, to_date: str, status: str = "FT") -> List[Dict[str, Any]]:
+        """Recupera le partite finite (FT = Full Time) in un range di date"""
+        fixtures = []
+
+        # L'API ha limite su quante partite restituisce per chiamata
+        # Dividiamo per giorni per essere sicuri di prenderle tutte
+        current_date = datetime.fromisoformat(from_date).date()
+        end_date = datetime.fromisoformat(to_date).date()
+
+        while current_date <= end_date:
+            date_str = current_date.isoformat()
+
+            try:
+                data = await self._make_request("fixtures", {"date": date_str, "status": status})
+                daily_fixtures = data.get("response", [])
+                fixtures.extend(daily_fixtures)
+                logger.info(f"Retrieved {len(daily_fixtures)} finished fixtures for {date_str}")
+
+            except Exception as e:
+                logger.error(f"Failed to get finished fixtures for {date_str}: {str(e)}")
+                continue
+
+            current_date += timedelta(days=1)
+            await asyncio.sleep(1)  # Pausa tra le richieste
+
+        return fixtures
+
+    async def get_fixture_results(self, fixture_id: int) -> Optional[Dict[str, Any]]:
+        """Recupera il risultato di una specifica partita finita"""
+        try:
+            data = await self._make_request("fixtures", {"id": fixture_id})
+            fixtures = data.get("response", [])
+            if fixtures:
+                fixture = fixtures[0]
+                # Verifica che la partita sia finita
+                if fixture.get("fixture", {}).get("status", {}).get("short") == "FT":
+                    return fixture
+            return None
+        except Exception as e:
+            logger.error(f"Failed to get results for fixture {fixture_id}: {str(e)}")
+            return None
+
 # Singleton instance
 football_api = FootballAPIClient()
 

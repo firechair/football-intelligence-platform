@@ -7,9 +7,11 @@ Base = declarative_base()
 # Importiamo i modelli DOPO aver definito il Base
 from .odds_tracking import ExtendedOddsHistory, BookmakerInfo, FixtureTrackingStatus
 from .predictions import MatchPredictions
+from .accuracy_tracking import FinishedFixtures, PredictionAccuracy, AccuracyStatistics
 
 __all__ = [
-    "Base", 
+    "Base",
     "ExtendedOddsHistory", "BookmakerInfo", "FixtureTrackingStatus",
-    "MatchPredictions"
+    "MatchPredictions",
+    "FinishedFixtures", "PredictionAccuracy", "AccuracyStatistics"
 ]

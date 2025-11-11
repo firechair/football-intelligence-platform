@@ -77,3 +77,4 @@ async def get_team_statistics(
     except Exception as e:
         logger.error(f"Error getting team stats for {team_name}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Errore interno del server: {str(e)}")
+
