@@ -218,7 +218,7 @@ class MatchCleanupService:
             
             logger.warning(f"Emergency cleanup executed: {odds_deleted} odds deleted, "
                          f"{tracking_updated} tracking updated for data older than {days_back} days")
-            
+
             return {
                 "type": "emergency",
                 "days_back": days_back,
@@ -226,10 +226,65 @@ class MatchCleanupService:
                 "tracking_updated": tracking_updated,
                 "cutoff_date": cutoff_date.isoformat()
             }
-            
+
+    async def cleanup_old_predictions(self, db: Session, days_back: int = 30) -> Dict[str, Any]:
+        """
+        🆕 NUOVA: Pulisce predizioni vecchie per liberare spazio
+        Rimuove predizioni per partite finite o molto vecchie
+        """
+        cutoff_date = datetime.now() - timedelta(days=days_back)
+
+        try:
+            # 1. Cancella predizioni per partite finite più vecchie di 7 giorni
+            finished_cutoff = datetime.now() - timedelta(days=7)
+            finished_predictions_deleted = db.query(MatchPredictions).filter(
+                and_(
+                    MatchPredictions.fixture_date < finished_cutoff,
+                    MatchPredictions.fixture_id.in_(
+                        db.query(FixtureTrackingStatus.fixture_id).filter(
+                            FixtureTrackingStatus.tracking_status == "completed"
+                        )
+                    )
+                )
+            ).delete(synchronize_session=False)
+
+            # 2. Cancella predizioni molto vecchie (>30 giorni) indipendentemente dallo stato
+            old_predictions_deleted = db.query(MatchPredictions).filter(
+                MatchPredictions.collected_at < cutoff_date
+            ).delete(synchronize_session=False)
+
+            # 3. Cancella predizioni per partite future molto lontane (>90 giorni)
+            future_cutoff = datetime.now() + timedelta(days=90)
+            future_predictions_deleted = db.query(MatchPredictions).filter(
+                MatchPredictions.fixture_date > future_cutoff
+            ).delete(synchronize_session=False)
+
+            db.commit()
+
+            total_deleted = finished_predictions_deleted + old_predictions_deleted + future_predictions_deleted
+
+            cleanup_result = {
+                "type": "predictions_cleanup",
+                "days_back": days_back,
+                "finished_predictions_deleted": finished_predictions_deleted,
+                "old_predictions_deleted": old_predictions_deleted,
+                "future_predictions_deleted": future_predictions_deleted,
+                "total_predictions_deleted": total_deleted,
+                "cutoff_date": cutoff_date.isoformat()
+            }
+
+            if total_deleted > 0:
+                logger.info(f"🧹 Predictions cleanup: {total_deleted} predictions removed "
+                          f"({finished_predictions_deleted} finished, {old_predictions_deleted} old, "
+                          f"{future_predictions_deleted} future)")
+            else:
+                logger.info("🧹 Predictions cleanup: No old predictions to remove")
+
+            return cleanup_result
+
         except Exception as e:
             db.rollback()
-            logger.error(f"Emergency cleanup failed: {str(e)}")
+            logger.error(f"Predictions cleanup failed: {str(e)}")
             raise
 
 # Singleton instance

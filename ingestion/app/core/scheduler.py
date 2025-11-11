@@ -240,11 +240,17 @@ class OddsTrackingScheduler:
     async def _process_daily_cleanup(self):
         """🧹 PROCESSA PULIZIA GIORNALIERA"""
         logger.info("🧹 Processing DAILY cleanup")
-        
+
         db = next(get_db())
         try:
+            # 1. Cleanup partite finite
             cleanup_result = await cleanup_service.cleanup_finished_matches(db)
-            logger.info(f"✅ Daily cleanup COMPLETED: {cleanup_result}")
+            logger.info(f"✅ Fixtures cleanup COMPLETED: {cleanup_result}")
+
+            # 2. 🆕 Cleanup predizioni vecchie
+            predictions_cleanup_result = await cleanup_service.cleanup_old_predictions(db)
+            logger.info(f"✅ Predictions cleanup COMPLETED: {predictions_cleanup_result}")
+
         finally:
             db.close()
 
