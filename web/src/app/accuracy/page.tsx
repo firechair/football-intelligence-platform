@@ -165,7 +165,7 @@ export default function AccuracyPage() {
             Analizza le performance delle predizioni confrontandole con i risultati reali.
             <br />
             <small className="text-xs">
-              💡 Le predizioni vengono conservate per 60+ giorni dopo la fine delle partite per permettere la valutazione dell'accuratezza.
+              💡 Sistema intelligente: conserva predizioni fino a completa valutazione dell'accuratezza, poi le rimuove dopo 7 giorni.
             </small>
           </p>
         </div>
@@ -189,7 +189,7 @@ export default function AccuracyPage() {
             disabled={cleaning}
             variant="outline"
             className="flex items-center gap-2"
-            title="Rimuove predizioni molto vecchie (>90 giorni) e future lontane (>180 giorni). Preserva predizioni per partite finite fino a 60 giorni dopo la valutazione."
+            title="Sistema intelligente: prima completa la valutazione dell'accuratezza per tutte le partite finite, poi rimuove solo le predizioni già valutate (>7 giorni dopo valutazione)."
           >
             {cleaning ? (
               <RefreshCw className="h-4 w-4 animate-spin" />
