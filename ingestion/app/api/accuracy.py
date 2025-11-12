@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, HTTPException
 
 router = APIRouter()
 
@@ -59,7 +59,7 @@ def get_finished_fixtures(
         "note": "Partite finite non ancora raccolte"
     }
 
-@router.post("/collect-results")
+@router.post("/collect")
 async def collect_finished_fixtures(
     days_back: int = Query(7, ge=1, le=30)
 ):
@@ -77,7 +77,7 @@ async def collect_finished_fixtures(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to collect results: {str(e)}")
 
-@router.post("/evaluate-accuracy")
+@router.post("/evaluate")
 async def evaluate_predictions_accuracy(
     days_back: int = Query(7, ge=1, le=30)
 ):
