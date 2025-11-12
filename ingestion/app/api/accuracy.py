@@ -47,6 +47,11 @@ async def evaluate_predictions_accuracy(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to evaluate accuracy: {str(e)}")
 
+@router.get("/test")
+async def test_accuracy_endpoint():
+    """Endpoint di test per verificare che il modulo sia caricato"""
+    return {"success": True, "message": "Accuracy module loaded successfully"}
+
 @router.post("/collect-and-evaluate")
 async def collect_and_evaluate_all(
     days_back: int = Query(7, ge=1, le=30),
