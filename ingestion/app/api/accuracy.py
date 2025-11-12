@@ -220,3 +220,4 @@ async def collect_and_evaluate_all(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to collect and evaluate: {str(e)}")
+# Deploy test
