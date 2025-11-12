@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 
-from app.db.session import get_db
+from app.core.database import get_db
 from app.services.accuracy_evaluator import PredictionAccuracyEvaluator
 from app.models import PredictionAccuracy, FinishedFixtures, AccuracyStatistics
 

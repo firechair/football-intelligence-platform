@@ -1,6 +1,6 @@
 import asyncio
 from datetime import datetime, timedelta
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from app.core.database import get_db
@@ -226,6 +226,11 @@ class MatchCleanupService:
                 "tracking_updated": tracking_updated,
                 "cutoff_date": cutoff_date.isoformat()
             }
+
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Emergency cleanup failed: {str(e)}")
+            raise
 
     async def cleanup_old_predictions(self, db: Session, days_back: int = 30) -> Dict[str, Any]:
         """
