@@ -165,7 +165,7 @@ export default function AccuracyPage() {
             Analizza le performance delle predizioni confrontandole con i risultati reali.
             <br />
             <small className="text-xs">
-              💡 Sistema intelligente: conserva predizioni fino a completa valutazione dell'accuratezza, poi le rimuove dopo 7 giorni.
+              💡 Sistema intelligente: conserva predizioni fino a completa valutazione dell&apos;accuratezza, poi le rimuove dopo 7 giorni.
             </small>
           </p>
         </div>
