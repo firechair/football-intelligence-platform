@@ -230,31 +230,38 @@ class MatchCleanupService:
     async def cleanup_old_predictions(self, db: Session, days_back: int = 30) -> Dict[str, Any]:
         """
         🆕 NUOVA: Pulisce predizioni vecchie per liberare spazio
-        Rimuove predizioni per partite finite o molto vecchie
+        Rimuove predizioni per partite finite SOLO dopo valutazione accuratezza
         """
         cutoff_date = datetime.now() - timedelta(days=days_back)
 
         try:
-            # 1. Cancella predizioni per partite finite più vecchie di 7 giorni
-            finished_cutoff = datetime.now() - timedelta(days=7)
+            # 1. Cancella predizioni per partite finite più vecchie di 60 giorni
+            # SOLO se sono state valutate per l'accuratezza
+            finished_cutoff = datetime.now() - timedelta(days=60)  # 🆕 AUMENTATO da 7 a 60 giorni
             finished_predictions_deleted = db.query(MatchPredictions).filter(
                 and_(
                     MatchPredictions.fixture_date < finished_cutoff,
                     MatchPredictions.fixture_id.in_(
                         db.query(FixtureTrackingStatus.fixture_id).filter(
-                            FixtureTrackingStatus.tracking_status == "completed"
+                            and_(
+                                FixtureTrackingStatus.tracking_status == "completed",
+                                FixtureTrackingStatus.fixture_id.in_(
+                                    db.query(PredictionAccuracy.fixture_id)  # 🆕 SOLO se valutate
+                                )
+                            )
                         )
                     )
                 )
             ).delete(synchronize_session=False)
 
-            # 2. Cancella predizioni molto vecchie (>30 giorni) indipendentemente dallo stato
+            # 2. Cancella predizioni molto vecchie (>90 giorni) indipendentemente dallo stato
+            very_old_cutoff = datetime.now() - timedelta(days=90)  # 🆕 AUMENTATO da 30 a 90 giorni
             old_predictions_deleted = db.query(MatchPredictions).filter(
-                MatchPredictions.collected_at < cutoff_date
+                MatchPredictions.collected_at < very_old_cutoff
             ).delete(synchronize_session=False)
 
-            # 3. Cancella predizioni per partite future molto lontane (>90 giorni)
-            future_cutoff = datetime.now() + timedelta(days=90)
+            # 3. Cancella predizioni per partite future molto lontane (>180 giorni)
+            future_cutoff = datetime.now() + timedelta(days=180)  # 🆕 AUMENTATO da 90 a 180 giorni
             future_predictions_deleted = db.query(MatchPredictions).filter(
                 MatchPredictions.fixture_date > future_cutoff
             ).delete(synchronize_session=False)
@@ -270,7 +277,13 @@ class MatchCleanupService:
                 "old_predictions_deleted": old_predictions_deleted,
                 "future_predictions_deleted": future_predictions_deleted,
                 "total_predictions_deleted": total_deleted,
-                "cutoff_date": cutoff_date.isoformat()
+                "cutoff_date": cutoff_date.isoformat(),
+                "logic_explanation": {
+                    "finished_cutoff_days": 60,
+                    "very_old_cutoff_days": 90,
+                    "future_cutoff_days": 180,
+                    "only_evaluated_finished": True
+                }
             }
 
             if total_deleted > 0:
