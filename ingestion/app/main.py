@@ -13,7 +13,7 @@ import asyncio
 from datetime import datetime
 
 from app.core.config import settings
-from app.api import historical, charts, admin, predictions, homepage, fixtures, odds, assets, database_admin, team_stats, accuracy
+from app.api import historical, charts, admin, predictions, homepage, fixtures, odds, assets, database_admin, team_stats
 from app.core.scheduler import scheduler, live_odds_monitor
 
 # Logging setup
@@ -45,7 +45,6 @@ app.include_router(fixtures.router, prefix="/api/v1")
 app.include_router(odds.router, prefix="/api/v1")
 app.include_router(assets.router, prefix="/api/v1")
 app.include_router(database_admin.router, prefix="/api/v1")
-app.include_router(accuracy.router, prefix="/api/v1")
 app.include_router(team_stats.router, prefix="/api")
 
 # Startup e shutdown events
