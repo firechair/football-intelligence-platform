@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Query, Depends
+from fastapi import APIRouter, Query, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import Optional
 from datetime import datetime, timedelta
@@ -168,3 +168,55 @@ def get_finished_fixtures(
 
     except Exception as e:
         return {"success": False, "error": f"Failed to get finished fixtures: {str(e)}"}
+
+@router.post("/collect-results")
+async def collect_finished_fixtures(
+    days_back: int = Query(7, ge=1, le=30)
+):
+    """Raccoglie i risultati delle partite finite - versione semplificata"""
+    try:
+        # Per ora restituiamo un messaggio placeholder
+        # TODO: Implementare la logica completa quando tutti gli import funzionano
+        return {
+            "success": True,
+            "message": f"Would collect finished fixtures for {days_back} days back",
+            "collected_count": 0,
+            "note": "Endpoint disponibile, logica completa in sviluppo"
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to collect results: {str(e)}")
+
+@router.post("/evaluate-accuracy")
+async def evaluate_predictions_accuracy(
+    days_back: int = Query(7, ge=1, le=30)
+):
+    """Valuta l'accuratezza delle predizioni - versione semplificata"""
+    try:
+        # Per ora restituiamo un messaggio placeholder
+        return {
+            "success": True,
+            "message": f"Would evaluate accuracy for {days_back} days back",
+            "evaluated_count": 0,
+            "note": "Endpoint disponibile, logica completa in sviluppo"
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to evaluate accuracy: {str(e)}")
+
+@router.post("/collect-and-evaluate")
+async def collect_and_evaluate_all(
+    days_back: int = Query(7, ge=1, le=30)
+):
+    """Raccoglie risultati e valuta accuratezza - versione semplificata"""
+    try:
+        # Per ora restituiamo un messaggio placeholder
+        return {
+            "success": True,
+            "message": f"Would collect and evaluate for {days_back} days back",
+            "result": {"fixtures_collected": 0, "predictions_evaluated": 0},
+            "note": "Endpoint disponibile, logica completa in sviluppo"
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to collect and evaluate: {str(e)}")
