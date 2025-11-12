@@ -229,76 +229,186 @@ class MatchCleanupService:
 
     async def cleanup_old_predictions(self, db: Session, days_back: int = 30) -> Dict[str, Any]:
         """
-        🆕 NUOVA: Pulisce predizioni vecchie per liberare spazio
-        Rimuove predizioni per partite finite SOLO dopo valutazione accuratezza
+        🆕 OTTIMIZZATA: Prima completa valutazione accuratezza, poi pulisce
+        Sistema intelligente che garantisce valutazione prima della pulizia
         """
-        cutoff_date = datetime.now() - timedelta(days=days_back)
-
         try:
-            # 1. Cancella predizioni per partite finite più vecchie di 60 giorni
-            # SOLO se sono state valutate per l'accuratezza
-            finished_cutoff = datetime.now() - timedelta(days=60)  # 🆕 AUMENTATO da 7 a 60 giorni
-            finished_predictions_deleted = db.query(MatchPredictions).filter(
-                and_(
-                    MatchPredictions.fixture_date < finished_cutoff,
-                    MatchPredictions.fixture_id.in_(
-                        db.query(FixtureTrackingStatus.fixture_id).filter(
-                            and_(
-                                FixtureTrackingStatus.tracking_status == "completed",
-                                FixtureTrackingStatus.fixture_id.in_(
-                                    db.query(PredictionAccuracy.fixture_id)  # 🆕 SOLO se valutate
-                                )
-                            )
-                        )
-                    )
-                )
-            ).delete(synchronize_session=False)
+            # 🔍 FASE 1: COMPLETA VALUTAZIONE ACCURATEZZA PER PARTITE FINITE
+            await self._complete_accuracy_evaluation_for_finished_matches(db)
 
-            # 2. Cancella predizioni molto vecchie (>90 giorni) indipendentemente dallo stato
-            very_old_cutoff = datetime.now() - timedelta(days=90)  # 🆕 AUMENTATO da 30 a 90 giorni
-            old_predictions_deleted = db.query(MatchPredictions).filter(
-                MatchPredictions.collected_at < very_old_cutoff
-            ).delete(synchronize_session=False)
+            # 🧹 FASE 2: PULISCE PREDIZIONI VALUTATE (solo dopo 7 giorni dalla valutazione)
+            evaluated_cleanup_stats = await self._cleanup_evaluated_predictions(db)
 
-            # 3. Cancella predizioni per partite future molto lontane (>180 giorni)
-            future_cutoff = datetime.now() + timedelta(days=180)  # 🆕 AUMENTATO da 90 a 180 giorni
-            future_predictions_deleted = db.query(MatchPredictions).filter(
-                MatchPredictions.fixture_date > future_cutoff
-            ).delete(synchronize_session=False)
+            # 🧽 FASE 3: PULISCE PREDIZIONI MOLTO VECCHIE (fallback)
+            old_cleanup_stats = await self._cleanup_very_old_predictions(db, days_back)
 
-            db.commit()
+            # 🚀 FASE 4: PULISCE PREDIZIONI FUTURE LONTANE
+            future_cleanup_stats = await self._cleanup_future_predictions(db)
 
-            total_deleted = finished_predictions_deleted + old_predictions_deleted + future_predictions_deleted
+            total_deleted = (
+                evaluated_cleanup_stats['deleted'] +
+                old_cleanup_stats['deleted'] +
+                future_cleanup_stats['deleted']
+            )
 
             cleanup_result = {
-                "type": "predictions_cleanup",
-                "days_back": days_back,
-                "finished_predictions_deleted": finished_predictions_deleted,
-                "old_predictions_deleted": old_predictions_deleted,
-                "future_predictions_deleted": future_predictions_deleted,
+                "type": "smart_predictions_cleanup",
+                "phases_completed": {
+                    "accuracy_evaluation": True,
+                    "evaluated_cleanup": evaluated_cleanup_stats,
+                    "old_cleanup": old_cleanup_stats,
+                    "future_cleanup": future_cleanup_stats
+                },
                 "total_predictions_deleted": total_deleted,
-                "cutoff_date": cutoff_date.isoformat(),
                 "logic_explanation": {
-                    "finished_cutoff_days": 60,
+                    "evaluation_first": "Prima completa valutazione accuratezza per partite finite",
+                    "evaluated_cleanup_days": 7,
                     "very_old_cutoff_days": 90,
                     "future_cutoff_days": 180,
-                    "only_evaluated_finished": True
+                    "smart_approach": "Valuta prima, pulisci dopo"
                 }
             }
 
             if total_deleted > 0:
-                logger.info(f"🧹 Predictions cleanup: {total_deleted} predictions removed "
-                          f"({finished_predictions_deleted} finished, {old_predictions_deleted} old, "
-                          f"{future_predictions_deleted} future)")
+                logger.info(f"🧹 Smart predictions cleanup: {total_deleted} predictions removed")
             else:
-                logger.info("🧹 Predictions cleanup: No old predictions to remove")
+                logger.info("🧹 Smart predictions cleanup: No predictions to remove")
 
             return cleanup_result
 
         except Exception as e:
             db.rollback()
-            logger.error(f"Predictions cleanup failed: {str(e)}")
+            logger.error(f"Smart predictions cleanup failed: {str(e)}")
             raise
+
+    async def _complete_accuracy_evaluation_for_finished_matches(self, db: Session) -> Dict[str, Any]:
+        """Completa la valutazione dell'accuratezza per tutte le partite finite che hanno predizioni"""
+        from app.services.accuracy_evaluator import PredictionAccuracyEvaluator
+
+        evaluator = PredictionAccuracyEvaluator(db)
+
+        # Trova partite finite con predizioni non ancora valutate
+        unvaluated_finished = db.query(MatchPredictions.fixture_id).filter(
+            and_(
+                MatchPredictions.fixture_id.in_(
+                    db.query(FixtureTrackingStatus.fixture_id).filter(
+                        FixtureTrackingStatus.tracking_status == "completed"
+                    )
+                ),
+                ~MatchPredictions.fixture_id.in_(
+                    db.query(PredictionAccuracy.fixture_id)
+                )
+            )
+        ).distinct().all()
+
+        unvaluated_fixture_ids = [row[0] for row in unvaluated_finished]
+
+        if not unvaluated_fixture_ids:
+            logger.info("✅ All finished matches with predictions are already evaluated")
+            return {"evaluated": 0, "message": "All evaluations complete"}
+
+        # Valuta l'accuratezza per queste partite
+        logger.info(f"🔍 Evaluating accuracy for {len(unvaluated_fixture_ids)} finished matches")
+        evaluated_count = 0
+
+        for fixture_id in unvaluated_fixture_ids:
+            try:
+                # Recupera dati necessari per valutazione
+                fixture_data = await self._get_fixture_data_for_accuracy_evaluation(db, fixture_id)
+                if fixture_data:
+                    success = await evaluator._evaluate_single_prediction(fixture_data)
+                    if success:
+                        evaluated_count += 1
+            except Exception as e:
+                logger.error(f"Failed to evaluate accuracy for fixture {fixture_id}: {str(e)}")
+                continue
+
+        logger.info(f"✅ Completed accuracy evaluation for {evaluated_count} matches")
+        return {"evaluated": evaluated_count, "total_found": len(unvaluated_fixture_ids)}
+
+    async def _get_fixture_data_for_accuracy_evaluation(self, db: Session, fixture_id: int) -> Optional[Dict[str, Any]]:
+        """Recupera tutti i dati necessari per valutare l'accuratezza di una partita"""
+        try:
+            # Recupera dati partita finita
+            finished_fixture = db.query(FinishedFixtures).filter(
+                FinishedFixtures.fixture_id == fixture_id
+            ).first()
+
+            if not finished_fixture:
+                logger.warning(f"No finished fixture data for {fixture_id}")
+                return None
+
+            # Recupera predizione
+            prediction = db.query(MatchPredictions).filter(
+                MatchPredictions.fixture_id == fixture_id
+            ).first()
+
+            if not prediction:
+                logger.warning(f"No prediction data for {fixture_id}")
+                return None
+
+            return {
+                'fixture_id': fixture_id,
+                'fixture_date': finished_fixture.fixture_date,
+                'actual_home_score': finished_fixture.home_score,
+                'actual_away_score': finished_fixture.away_score,
+                'actual_winner': finished_fixture.winner,
+                'actual_total_goals': finished_fixture.total_goals,
+                'home_team': finished_fixture.home_team,
+                'away_team': finished_fixture.away_team,
+                'predicted_winner_name': prediction.winner_team_name,
+                'predicted_win_or_draw': prediction.win_or_draw,
+                'predicted_under_over': prediction.under_over,
+                'predicted_goals_home': prediction.goals_home,
+                'predicted_goals_away': prediction.goals_away,
+                'prediction_advice': prediction.advice,
+                'prediction_collected_at': prediction.collected_at
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting fixture data for accuracy evaluation: {str(e)}")
+            return None
+
+    async def _cleanup_evaluated_predictions(self, db: Session) -> Dict[str, Any]:
+        """Pulisce predizioni che sono state valutate e sono vecchie di almeno 7 giorni"""
+        evaluation_cutoff = datetime.now() - timedelta(days=7)
+
+        deleted = db.query(MatchPredictions).filter(
+            and_(
+                MatchPredictions.fixture_id.in_(
+                    db.query(PredictionAccuracy.fixture_id).filter(
+                        PredictionAccuracy.evaluated_at < evaluation_cutoff
+                    )
+                ),
+                MatchPredictions.fixture_id.in_(
+                    db.query(FixtureTrackingStatus.fixture_id).filter(
+                        FixtureTrackingStatus.tracking_status == "completed"
+                    )
+                )
+            )
+        ).delete(synchronize_session=False)
+
+        return {"deleted": deleted, "days_after_evaluation": 7}
+
+    async def _cleanup_very_old_predictions(self, db: Session, days_back: int) -> Dict[str, Any]:
+        """Pulisce predizioni molto vecchie (>90 giorni) come fallback di sicurezza"""
+        very_old_cutoff = datetime.now() - timedelta(days=90)
+
+        deleted = db.query(MatchPredictions).filter(
+            MatchPredictions.collected_at < very_old_cutoff
+        ).delete(synchronize_session=False)
+
+        return {"deleted": deleted, "cutoff_days": 90}
+
+    async def _cleanup_future_predictions(self, db: Session) -> Dict[str, Any]:
+        """Pulisce predizioni per partite future molto lontane (>180 giorni)"""
+        future_cutoff = datetime.now() + timedelta(days=180)
+
+        deleted = db.query(MatchPredictions).filter(
+            MatchPredictions.fixture_date > future_cutoff
+        ).delete(synchronize_session=False)
+
+        return {"deleted": deleted, "future_days": 180}
 
 # Singleton instance
 cleanup_service = MatchCleanupService()
