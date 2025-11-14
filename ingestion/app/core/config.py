@@ -20,19 +20,19 @@ class OddsTrackerSettings:
     # Football API Configuration
     FOOTBALL_API_KEY: str = "REDACTED"
     FOOTBALL_API_BASE_URL: str = "https://v3.football.api-sports.io"
-    
-    # Rate Limiting Configuration - Aggiornato per 5 req/sec supportate dal provider
+
+    # Rate Limiting Configuration - AGGIORNATO per gestire 5 req/sec
     MAX_CONCURRENT_REQUESTS: int = 5
-    REQUEST_SPACING: float = 0.2
+    REQUEST_SPACING: float = 0.2  # 5 req/sec = 0.2 secondi tra richieste
 
     # Data Retention
     ODDS_RETENTION_DAYS: int = 7
     PREDICTIONS_RETENTION_DAYS: int = 30
     FIXTURE_LOOKAHEAD_DAYS: int = 10
 
-    # Predictions Configuration - Ottimizzato per 5 req/sec
-    PREDICTIONS_MAX_CONCURRENT: int = 3
-    PREDICTIONS_REQUEST_SPACING: float = 0.5
+    # Predictions Configuration - AGGIORNATO per rate limiting
+    PREDICTIONS_MAX_CONCURRENT: int = 3  # Aumentato da 1 a 3
+    PREDICTIONS_REQUEST_SPACING: float = 0.5  # Ridotto per più velocità
     
     # Database Configuration
     DB_POOL_SIZE: int = 10
