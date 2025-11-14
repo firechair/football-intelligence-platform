@@ -194,15 +194,29 @@ def evaluate_predictions_accuracy():
     }
 
 @router.post("/collect-and-evaluate")
-async def collect_and_evaluate_all():
-    """Versione semplificata - solo per test deploy"""
-    return {
-        "success": True,
-        "message": "Endpoint funzionante - implementazione completa pronta",
-        "result": {
-            "fixtures_collected": 0,
-            "predictions_evaluated": 0
+async def collect_and_evaluate_all(db: Session = Depends(get_db)):
+    """Valuta l'accuratezza delle predizioni - versione con logica reale"""
+    try:
+        from app.services.accuracy_evaluator import AccuracyEvaluator
+
+        evaluator = AccuracyEvaluator()
+        result = await evaluator.collect_and_evaluate_all(db)
+
+        return {
+            "success": True,
+            "message": f"Collected {result.get('fixtures_collected', 0)} fixtures and evaluated {result.get('predictions_evaluated', 0)} predictions",
+            "result": result
         }
-    }
+
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Evaluation failed: {str(e)}",
+            "result": {
+                "fixtures_collected": 0,
+                "predictions_evaluated": 0,
+                "error": str(e)
+            }
+        }
 # Deploy test
 # Emergency deploy fix
