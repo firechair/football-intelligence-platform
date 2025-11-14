@@ -9,10 +9,10 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Rate limiter globale per tutte le chiamate API
-_global_rate_limiter = asyncio.Semaphore(2)  # Massimo 2 chiamate simultanee
+# Rate limiter globale per tutte le chiamate API - Aggiornato per 5 req/sec
+_global_rate_limiter = asyncio.Semaphore(5)  # Massimo 5 chiamate simultanee
 _last_request_time = 0
-_request_spacing = 1.0  # 1 secondo tra richieste (1 req/sec)
+_request_spacing = 0.2  # 0.2 secondi tra richieste (5 req/sec)
 
 class FootballAPIClient:
     def __init__(self):
