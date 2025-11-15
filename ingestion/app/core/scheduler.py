@@ -22,51 +22,79 @@ class OddsTrackingScheduler:
         self.last_predictions_date = None
     
     async def start(self):
-        """Avvia il flusso SEQUENZIALE ottimizzato: Fixtures → Predictions → Odds → Future"""
+        """🚀 RAILWAY-COMPATIBLE: Single execution per startup, no continuous loop"""
         if self.running:
             logger.warning("Scheduler already running")
             return
-        
+
         self.running = True
-        logger.info("🚀 Starting FIP Scheduler with SEQUENTIAL LOGIC")
-        logger.info("📅 Fixtures → 🔮 Predictions → 🎯 Odds → 🔄 Future → Repeat")
-        
+        logger.info("🚀 Starting FIP Scheduler (Railway-compatible single execution)")
+
         try:
-            # 🔥 EMERGENCY FIX: Prima esecuzione immediata per popolare database vuoto
-            logger.info("🔥 EMERGENCY: Collecting fixtures immediately on startup...")
+            # 🎯 SINGLE EXECUTION APPROACH for Railway
+            logger.info("🔄 Executing ONE complete collection cycle...")
+
+            # 1. FIXTURES GIORNALIERE
             await self._process_daily_fixtures()
-            logger.info("🔥 EMERGENCY: Fixtures collected, continuing normal flow...")
 
-            while self.running:
-                # 1. FIXTURES GIORNALIERE (1x/giorno)
-                await self._process_daily_fixtures()
-                
-                # 2. PREDIZIONI per fixtures giornaliere (1x/giorno)
-                await self._process_daily_predictions()
-                
-                # 3. QUOTE per fixtures giornaliere (dopo predizioni)
-                await self._process_daily_odds()
-                
-                # 4. FIXTURES FUTURE (settimanale)
-                await self._process_future_fixtures()
-                
-                # 5. PREDIZIONI FUTURE (settimanale)
-                await self._process_future_predictions()
-                
-                # 6. QUOTE FUTURE (limitato, non continuo)
-                await self._process_future_odds()
+            # 2. PREDIZIONI per fixtures giornaliere (PRIORITÀ ALTA)
+            await self._process_daily_predictions()
 
-                # 7. PULIZIA (1x/giorno)
-                await self._process_daily_cleanup()
-                
-                # Attendi fino al prossimo giorno
-                logger.info("✅ Daily cycle completed. Waiting until tomorrow...")
-                await asyncio.sleep(24 * 60 * 60)  # 24 ore
-                
+            # 3. QUOTE per fixtures giornaliere
+            await self._process_daily_odds()
+
+            # 4. FIXTURES FUTURE (solo se necessario)
+            await self._process_future_fixtures()
+
+            # 5. PREDIZIONI FUTURE
+            await self._process_future_predictions()
+
+            # 6. QUOTE FUTURE
+            await self._process_future_odds()
+
+            # 7. PULIZIA
+            await self._process_daily_cleanup()
+
+            logger.info("✅ Single collection cycle completed successfully!")
+            logger.info("💡 For continuous operation: Use Railway cron jobs or external scheduler")
+
         except Exception as e:
             logger.error(f"Scheduler error: {str(e)}")
         finally:
             self.running = False
+
+    async def run_daily_collection(self):
+        """🎯 MANUAL DAILY COLLECTION - Can be called by cron jobs"""
+        logger.info("📅 Running manual daily collection cycle...")
+
+        try:
+            # Core daily tasks
+            await self._process_daily_fixtures()
+            await self._process_daily_predictions()
+            await self._process_daily_odds()
+            await self._process_daily_cleanup()
+
+            logger.info("✅ Daily collection completed!")
+
+        except Exception as e:
+            logger.error(f"Daily collection error: {str(e)}")
+            raise
+
+    async def run_weekly_collection(self):
+        """📆 MANUAL WEEKLY COLLECTION - Can be called by cron jobs"""
+        logger.info("📆 Running manual weekly collection cycle...")
+
+        try:
+            # Weekly tasks
+            await self._process_future_fixtures()
+            await self._process_future_predictions()
+            await self._process_future_odds()
+
+            logger.info("✅ Weekly collection completed!")
+
+        except Exception as e:
+            logger.error(f"Weekly collection error: {str(e)}")
+            raise
     
     async def stop(self):
         """Ferma il scheduler"""

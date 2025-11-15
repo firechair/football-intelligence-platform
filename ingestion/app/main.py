@@ -91,10 +91,12 @@ async def startup_event():
     except Exception as e:
         logger.error(f"Error creating database tables: {e}")
 
-    # Avvia scheduler in background senza bloccarlo
-    # Avvia scheduler giornaliero
+    # 🚀 RAILWAY-COMPATIBLE: Single collection on startup
+    # Non avviare scheduler continuo - usa cron jobs invece
     if not scheduler.running:
+        logger.info("🔄 Running single collection cycle on startup...")
         asyncio.create_task(scheduler.start())
+        logger.info("✅ Startup collection initiated - use /api/v1/admin/scheduler/* endpoints for automated runs")
 
     # Avvia monitoraggio continuo live (processo separato)
     if not live_odds_monitor.running:
