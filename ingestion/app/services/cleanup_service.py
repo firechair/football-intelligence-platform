@@ -232,58 +232,53 @@ class MatchCleanupService:
             logger.error(f"Emergency cleanup failed: {str(e)}")
             raise
 
-    async def cleanup_old_predictions(self, db: Session, days_back: int = 30) -> Dict[str, Any]:
+    async def cleanup_old_predictions(self, db: Session, days_back: int = 14) -> Dict[str, Any]:
         """
-        🆕 OTTIMIZZATA: Prima completa valutazione accuratezza, poi pulisce
-        Sistema intelligente che garantisce valutazione prima della pulizia
+        🚀 AGGRESSIVE CLEANUP: Sistema ottimizzato per ridurre spazio database
+        Cancella predizioni più vecchie di 14 giorni (accuracy system usa solo ultimi 7 giorni)
         """
         try:
-            # 🔍 FASE 1: COMPLETA VALUTAZIONE ACCURATEZZA PER PARTITE FINITE
+            # 🔍 FASE 1: COMPLETA VALUTAZIONE ACCURATEZZA PER PARTITE FINITE (ultimi 7 giorni)
             await self._complete_accuracy_evaluation_for_finished_matches(db)
 
-            # 🧹 FASE 2: PULISCE PREDIZIONI VALUTATE (solo dopo 7 giorni dalla valutazione)
-            evaluated_cleanup_stats = await self._cleanup_evaluated_predictions(db)
+            # 🧹 FASE 2: PULISCE PREDIZIONI E VALUTAZIONI VECCHIE (dopo 14 giorni totali)
+            aggressive_cleanup_stats = await self._aggressive_cleanup_old_data(db)
 
-            # 🧽 FASE 3: PULISCE PREDIZIONI MOLTO VECCHIE (fallback)
-            old_cleanup_stats = await self._cleanup_very_old_predictions(db, days_back)
-
-            # 🚀 FASE 4: PULISCE PREDIZIONI FUTURE LONTANE
+            # 🚀 FASE 3: PULISCE PREDIZIONI FUTURE LONTANE
             future_cleanup_stats = await self._cleanup_future_predictions(db)
 
             total_deleted = (
-                evaluated_cleanup_stats['deleted'] +
-                old_cleanup_stats['deleted'] +
+                aggressive_cleanup_stats['predictions_deleted'] +
+                aggressive_cleanup_stats['accuracy_deleted'] +
                 future_cleanup_stats['deleted']
             )
 
             cleanup_result = {
-                "type": "smart_predictions_cleanup",
+                "type": "aggressive_predictions_cleanup",
                 "phases_completed": {
                     "accuracy_evaluation": True,
-                    "evaluated_cleanup": evaluated_cleanup_stats,
-                    "old_cleanup": old_cleanup_stats,
+                    "aggressive_cleanup": aggressive_cleanup_stats,
                     "future_cleanup": future_cleanup_stats
                 },
                 "total_predictions_deleted": total_deleted,
                 "logic_explanation": {
-                    "evaluation_first": "Prima completa valutazione accuratezza per partite finite",
-                    "evaluated_cleanup_days": 7,
-                    "very_old_cutoff_days": 90,
-                    "future_cutoff_days": 180,
-                    "smart_approach": "Valuta prima, pulisci dopo"
+                    "accuracy_system_needs": "Solo ultimi 7 giorni per valutazioni",
+                    "cleanup_cutoff_days": 14,
+                    "aggressive_approach": "Elimina dati non più necessari",
+                    "space_optimization": "Riduce significativamente spazio database"
                 }
             }
 
             if total_deleted > 0:
-                logger.info(f"🧹 Smart predictions cleanup: {total_deleted} predictions removed")
+                logger.info(f"🧹 Aggressive predictions cleanup: {total_deleted} items removed")
             else:
-                logger.info("🧹 Smart predictions cleanup: No predictions to remove")
+                logger.info("🧹 Aggressive predictions cleanup: No old data to remove")
 
             return cleanup_result
 
         except Exception as e:
             db.rollback()
-            logger.error(f"Smart predictions cleanup failed: {str(e)}")
+            logger.error(f"Aggressive predictions cleanup failed: {str(e)}")
             raise
 
     async def _complete_accuracy_evaluation_for_finished_matches(self, db: Session) -> Dict[str, Any]:
@@ -404,6 +399,38 @@ class MatchCleanupService:
         ).delete(synchronize_session=False)
 
         return {"deleted": deleted, "cutoff_days": 90}
+
+    async def _aggressive_cleanup_old_data(self, db: Session) -> Dict[str, Any]:
+        """🚀 AGGRESSIVE: Cancella predizioni e valutazioni più vecchie di 14 giorni"""
+        cutoff_date = datetime.now() - timedelta(days=14)
+
+        # Cancella predizioni vecchie
+        predictions_deleted = db.query(MatchPredictions).filter(
+            MatchPredictions.collected_at < cutoff_date
+        ).delete(synchronize_session=False)
+
+        # Cancella valutazioni accuratezza vecchie (associate alle predizioni)
+        # Import inline to avoid circular imports
+        PredictionAccuracy = None
+        try:
+            from app.models import PredictionAccuracy
+        except ImportError:
+            # If model not available, skip accuracy cleanup
+            accuracy_deleted = 0
+        else:
+            accuracy_deleted = db.query(PredictionAccuracy).filter(
+                PredictionAccuracy.evaluated_at < cutoff_date
+            ).delete(synchronize_session=False)
+
+        # Commit per liberare spazio
+        db.commit()
+
+        return {
+            "predictions_deleted": predictions_deleted,
+            "accuracy_deleted": accuracy_deleted,
+            "cutoff_days": 14,
+            "cutoff_date": cutoff_date.isoformat()
+        }
 
     async def _cleanup_future_predictions(self, db: Session) -> Dict[str, Any]:
         """Pulisce predizioni per partite future molto lontane (>180 giorni)"""
