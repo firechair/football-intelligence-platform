@@ -238,10 +238,15 @@ class MatchCleanupService:
         Cancella predizioni più vecchie di 14 giorni (accuracy system usa solo ultimi 7 giorni)
         """
         try:
-            # 🔍 FASE 1: COMPLETA VALUTAZIONE ACCURATEZZA PER PARTITE FINITE (ultimi 7 giorni)
-            await self._complete_accuracy_evaluation_for_finished_matches(db)
+            # 🔍 FASE 1: VALUTAZIONE ACCURATEZZA (se disponibile)
+            try:
+                await self._complete_accuracy_evaluation_for_finished_matches(db)
+                accuracy_evaluation_completed = True
+            except Exception as e:
+                logger.info(f"Accuracy evaluation not available or failed: {e}")
+                accuracy_evaluation_completed = False
 
-            # 🧹 FASE 2: PULISCE PREDIZIONI E VALUTAZIONI VECCHIE (dopo 14 giorni totali)
+            # 🧹 FASE 2: PULISCE PREDIZIONI VECCHIE (dopo 14 giorni)
             aggressive_cleanup_stats = await self._aggressive_cleanup_old_data(db)
 
             # 🚀 FASE 3: PULISCE PREDIZIONI FUTURE LONTANE
@@ -256,7 +261,7 @@ class MatchCleanupService:
             cleanup_result = {
                 "type": "aggressive_predictions_cleanup",
                 "phases_completed": {
-                    "accuracy_evaluation": True,
+                    "accuracy_evaluation": accuracy_evaluation_completed,
                     "aggressive_cleanup": aggressive_cleanup_stats,
                     "future_cleanup": future_cleanup_stats
                 },
@@ -283,48 +288,58 @@ class MatchCleanupService:
 
     async def _complete_accuracy_evaluation_for_finished_matches(self, db: Session) -> Dict[str, Any]:
         """Completa la valutazione dell'accuratezza per tutte le partite finite che hanno predizioni"""
-        from app.services.accuracy_evaluator import PredictionAccuracyEvaluator
+        try:
+            from app.services.accuracy_evaluator import PredictionAccuracyEvaluator
+            from app.models.accuracy_tracking import PredictionAccuracy
+        except ImportError:
+            logger.info("Accuracy evaluation not available, skipping")
+            return {"evaluated": 0, "message": "Accuracy evaluation not available"}
 
-        evaluator = PredictionAccuracyEvaluator(db)
+        try:
+            evaluator = PredictionAccuracyEvaluator(db)
 
-        # Trova partite finite con predizioni non ancora valutate
-        unvaluated_finished = db.query(MatchPredictions.fixture_id).filter(
-            and_(
-                MatchPredictions.fixture_id.in_(
-                    db.query(FixtureTrackingStatus.fixture_id).filter(
-                        FixtureTrackingStatus.tracking_status == "completed"
+            # Trova partite finite con predizioni non ancora valutate
+            unvaluated_finished = db.query(MatchPredictions.fixture_id).filter(
+                and_(
+                    MatchPredictions.fixture_id.in_(
+                        db.query(FixtureTrackingStatus.fixture_id).filter(
+                            FixtureTrackingStatus.tracking_status == "completed"
+                        )
+                    ),
+                    ~MatchPredictions.fixture_id.in_(
+                        db.query(PredictionAccuracy.fixture_id)
                     )
-                ),
-                ~MatchPredictions.fixture_id.in_(
-                    db.query(PredictionAccuracy.fixture_id)
                 )
-            )
-        ).distinct().all()
+            ).distinct().all()
 
-        unvaluated_fixture_ids = [row[0] for row in unvaluated_finished]
+            unvaluated_fixture_ids = [row[0] for row in unvaluated_finished]
 
-        if not unvaluated_fixture_ids:
-            logger.info("✅ All finished matches with predictions are already evaluated")
-            return {"evaluated": 0, "message": "All evaluations complete"}
+            if not unvaluated_fixture_ids:
+                logger.info("✅ All finished matches with predictions are already evaluated")
+                return {"evaluated": 0, "message": "All evaluations complete"}
 
-        # Valuta l'accuratezza per queste partite
-        logger.info(f"🔍 Evaluating accuracy for {len(unvaluated_fixture_ids)} finished matches")
-        evaluated_count = 0
+            # Valuta l'accuratezza per queste partite
+            logger.info(f"🔍 Evaluating accuracy for {len(unvaluated_fixture_ids)} finished matches")
+            evaluated_count = 0
 
-        for fixture_id in unvaluated_fixture_ids:
-            try:
-                # Recupera dati necessari per valutazione
-                fixture_data = await self._get_fixture_data_for_accuracy_evaluation(db, fixture_id)
-                if fixture_data:
-                    success = await evaluator._evaluate_single_prediction(fixture_data)
-                    if success:
-                        evaluated_count += 1
-            except Exception as e:
-                logger.error(f"Failed to evaluate accuracy for fixture {fixture_id}: {str(e)}")
-                continue
+            for fixture_id in unvaluated_fixture_ids:
+                try:
+                    # Recupera dati necessari per valutazione
+                    fixture_data = await self._get_fixture_data_for_accuracy_evaluation(db, fixture_id)
+                    if fixture_data:
+                        success = await evaluator._evaluate_single_prediction(fixture_data)
+                        if success:
+                            evaluated_count += 1
+                except Exception as e:
+                    logger.error(f"Failed to evaluate accuracy for fixture {fixture_id}: {str(e)}")
+                    continue
 
-        logger.info(f"✅ Completed accuracy evaluation for {evaluated_count} matches")
-        return {"evaluated": evaluated_count, "total_found": len(unvaluated_fixture_ids)}
+            logger.info(f"✅ Completed accuracy evaluation for {evaluated_count} matches")
+            return {"evaluated": evaluated_count, "total_found": len(unvaluated_fixture_ids)}
+
+        except Exception as e:
+            logger.warning(f"Accuracy evaluation failed, but cleanup will continue: {e}")
+            return {"evaluated": 0, "message": f"Accuracy evaluation failed: {e}"}
 
     async def _get_fixture_data_for_accuracy_evaluation(self, db: Session, fixture_id: int) -> Optional[Dict[str, Any]]:
         """Recupera tutti i dati necessari per valutare l'accuratezza di una partita"""
@@ -411,16 +426,23 @@ class MatchCleanupService:
 
         # Cancella valutazioni accuratezza vecchie (associate alle predizioni)
         # Import inline to avoid circular imports
-        PredictionAccuracy = None
+        accuracy_deleted = 0
         try:
-            from app.models import PredictionAccuracy
-        except ImportError:
-            # If model not available, skip accuracy cleanup
+            # Try to import the model
+            from app.models.accuracy_tracking import PredictionAccuracy
+            # Check if table exists before querying
+            from sqlalchemy import text
+            table_exists = db.execute(text(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{PredictionAccuracy.__tablename__}'")).fetchone()
+            if table_exists:
+                accuracy_deleted = db.query(PredictionAccuracy).filter(
+                    PredictionAccuracy.evaluated_at < cutoff_date
+                ).delete(synchronize_session=False)
+            else:
+                logger.info(f"Table {PredictionAccuracy.__tablename__} does not exist, skipping accuracy cleanup")
+        except (ImportError, AttributeError, Exception) as e:
+            # If model not available or table doesn't exist, skip accuracy cleanup
+            logger.info(f"PredictionAccuracy cleanup not available: {e}")
             accuracy_deleted = 0
-        else:
-            accuracy_deleted = db.query(PredictionAccuracy).filter(
-                PredictionAccuracy.evaluated_at < cutoff_date
-            ).delete(synchronize_session=False)
 
         # Commit per liberare spazio
         db.commit()
