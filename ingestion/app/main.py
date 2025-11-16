@@ -2,6 +2,10 @@
 import os
 from dotenv import load_dotenv
 
+# 🚨 CRITICAL FOR RAILWAY: Set default port if not specified
+if not os.getenv('PORT'):
+    os.environ['PORT'] = '8080'
+
 # Carica il file .env appropriato basato sulla variabile ENVIRONMENT
 env_file = ".env.test" if os.getenv("ENVIRONMENT") == "test" else ".env"
 load_dotenv(env_file, override=True)
@@ -182,4 +186,11 @@ async def shutdown_event():
 @app.get("/")
 async def root():
     return {"message": "FIP Odds Tracker API", "status": "running"}
+
+# 🚨 RAILWAY PORT CONFIGURATION
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv('PORT', 8080))
+    print(f"🚀 Starting server on port {port}")
+    uvicorn.run(app, host="0.0.0.0", port=port)
 
