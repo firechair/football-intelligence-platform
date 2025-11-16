@@ -152,14 +152,26 @@ async def startup_event():
             except Exception as e:
                 logger.error(f"❌ Job A/B failed: {str(e)}")
 
-        logger.info("🎯 Automatic job scheduling completed - service will restart in 30 minutes")
+        logger.info("🎯 Automatic job scheduling completed - service staying alive for Railway")
 
     finally:
         db.close()
 
+    # 🚨 CRITICAL: Keep the service alive for Railway
+    # Start a background task to keep the service running
+    logger.info("🔄 Starting background keep-alive task...")
+    asyncio.create_task(keep_service_alive())
+
     # Avvia monitoraggio continuo live (processo separato)
     if not live_odds_monitor.running:
         asyncio.create_task(live_odds_monitor.start())
+
+async def keep_service_alive():
+    """Keep the service alive for Railway cron jobs - runs forever"""
+    logger.info("🔄 Keep-alive task started - service will stay running")
+    while True:
+        await asyncio.sleep(300)  # Check every 5 minutes
+        logger.debug("🔄 Service keep-alive heartbeat")
 
 @app.on_event("shutdown")
 async def shutdown_event():
