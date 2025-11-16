@@ -7,6 +7,9 @@ from fastapi.middleware.cors import CORSMiddleware
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Import datetime for cron scheduling
+from datetime import datetime
+
 # Create FastAPI app
 app = FastAPI(
     title="FIP Odds Tracker - PHASE 5",
