@@ -91,12 +91,71 @@ async def startup_event():
     except Exception as e:
         logger.error(f"Error creating database tables: {e}")
 
-    # 🚀 RAILWAY-COMPATIBLE: Single collection on startup
-    # Non avviare scheduler continuo - usa cron jobs invece
-    if not scheduler.running:
-        logger.info("🔄 Running single collection cycle on startup...")
-        asyncio.create_task(scheduler.start())
-        logger.info("✅ Startup collection initiated - use /api/v1/admin/scheduler/* endpoints for automated runs")
+    # 🚀 AUTOMATIC JOB SCHEDULING BASED ON TIME (Railway cron runs every 30 min)
+    from datetime import datetime
+    import asyncio
+    from app.core.database import get_db
+
+    # Get database session
+    db = next(get_db())
+
+    try:
+        current_time = datetime.now()
+        current_hour = current_time.hour
+        current_minute = current_time.minute
+
+        logger.info(f"⏰ Service started at {current_hour:02d}:{current_minute:02d} - checking which jobs to run...")
+
+        # Job D: RESULTS CHECKER - Always runs (every 30 minutes)
+        logger.info("✅ Job D: Results checker - Running (every 30 min)")
+        try:
+            from app.services.cleanup_service import cleanup_service
+            cleanup_result = await cleanup_service.cleanup_finished_matches(db)
+            logger.info(f"✅ Job D completed: {cleanup_result.get('matches_checked', 0)} matches checked")
+        except Exception as e:
+            logger.error(f"❌ Job D failed: {str(e)}")
+
+        # Job C: ODDS UPDATE - Every 3 hours
+        if current_hour % 3 == 0 and current_minute < 30:
+            logger.info("🎯 Job C: Odds update - Running (every 3 hours)")
+            try:
+                from app.services.odds_collector import odds_collector
+                from app.services.fixtures_collector import fixtures_collector
+                fixture_ids = await fixtures_collector.get_daily_fixtures_for_tracking(db)
+                if fixture_ids:
+                    odds_result = await odds_collector.collect_odds_for_fixtures(fixture_ids, db)
+                    logger.info(f"✅ Job C completed: {odds_result.get('odds_collected', 0)} odds collected")
+                else:
+                    logger.info("ℹ️ Job C: No fixtures to process")
+            except Exception as e:
+                logger.error(f"❌ Job C failed: {str(e)}")
+
+        # Job A & B: FIXTURES + PREDICTIONS - Every 6 hours at specific times
+        if current_hour in [1, 7, 13, 19] and current_minute < 30:
+            logger.info(f"🏟️ Job A: Fixtures collection - Running (hour {current_hour})")
+
+            try:
+                # Job A: Collect fixtures first
+                from app.services.fixtures_collector import fixtures_collector
+                fixtures_result = await fixtures_collector.collect_upcoming_fixtures(days_ahead=14)
+                await fixtures_collector.update_tracking_status(fixtures_result, db)
+                logger.info(f"✅ Job A completed: {len(fixtures_result)} fixtures collected")
+
+                # Wait 1 minute, then Job B
+                await asyncio.sleep(60)
+
+                logger.info(f"🔮 Job B: Predictions update - Running (hour {current_hour})")
+                from app.services.predictions_collector import predictions_collector
+                predictions_result = await predictions_collector.collect_daily_predictions_only(db)
+                logger.info(f"✅ Job B completed: {predictions_result.get('predictions_collected', 0)} predictions collected")
+
+            except Exception as e:
+                logger.error(f"❌ Job A/B failed: {str(e)}")
+
+        logger.info("🎯 Automatic job scheduling completed - service will restart in 30 minutes")
+
+    finally:
+        db.close()
 
     # Avvia monitoraggio continuo live (processo separato)
     if not live_odds_monitor.running:
