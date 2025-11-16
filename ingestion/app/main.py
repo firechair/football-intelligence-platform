@@ -104,48 +104,192 @@ async def health():
 # Simple job endpoints - no database
 @app.post("/api/v1/admin/job/fixtures-daily")
 async def job_fixtures_daily():
-    """Simple Job A response"""
-    return {
-        "success": True,
-        "message": "Fixtures job (diagnostic - no database)",
-        "fixtures_collected": 0,
-        "database": "disabled"
-    }
+    """Job A: Fixtures collection (daily + future) - REAL IMPLEMENTATION"""
+    try:
+        # Job A always runs regardless of database status
+        # Import real fixtures collector
+        from app.services.fixtures_collector import fixtures_collector
+
+        # Collect both daily and future fixtures
+        logger.info("🏟️ Job A: Starting fixtures collection...")
+
+        # Collect future fixtures (7-14 days ahead)
+        future_fixtures = await fixtures_collector.collect_upcoming_fixtures(days_ahead=14)
+
+        if db_initialized:
+            # Collect daily fixtures and save to database
+            db = next(get_db())
+            try:
+                daily_fixtures = await fixtures_collector.get_daily_fixtures_for_tracking(db)
+                return {
+                    "success": True,
+                    "message": f"Fixtures collection completed successfully",
+                    "future_fixtures_collected": len(future_fixtures) if future_fixtures else 0,
+                    "daily_fixtures_found": len(daily_fixtures) if daily_fixtures else 0,
+                    "database_status": "saved",
+                    "timestamp": datetime.now().isoformat()
+                }
+            finally:
+                db.close()
+        else:
+            return {
+                "success": True,
+                "message": f"Future fixtures collected (database not available)",
+                "future_fixtures_collected": len(future_fixtures) if future_fixtures else 0,
+                "daily_fixtures_found": 0,
+                "database_status": "unavailable",
+                "timestamp": datetime.now().isoformat()
+            }
+
+    except Exception as e:
+        logger.error(f"❌ Job A failed: {str(e)}")
+        return {
+            "success": False,
+            "message": f"Fixtures collection failed: {str(e)}",
+            "fixtures_collected": 0,
+            "error": str(e)
+        }
 
 @app.post("/api/v1/admin/job/predictions-update")
 async def job_predictions_update():
-    """Simple Job B response"""
-    return {
-        "success": True,
-        "message": "Predictions job (diagnostic - no database)",
-        "predictions_collected": 0,
-        "database": "disabled"
-    }
+    """Job B: Predictions update (every 6 hours) - REAL IMPLEMENTATION"""
+    try:
+        if not db_initialized:
+            return {
+                "success": False,
+                "message": "Predictions update failed - database not initialized",
+                "error": db_error_message,
+                "predictions_collected": 0,
+                "predictions_updated": 0
+            }
+
+        # Import real predictions collector
+        from app.services.predictions_collector import predictions_collector
+
+        # Execute real predictions collection
+        db = next(get_db())
+        try:
+            result = await predictions_collector.collect_daily_predictions_only(db)
+            return {
+                "success": True,
+                "message": f"Predictions update completed successfully",
+                "predictions_collected": result.get("predictions_collected", 0),
+                "predictions_updated": result.get("predictions_updated", 0),
+                "processed_fixtures": result.get("processed_count", 0),
+                "timestamp": datetime.now().isoformat()
+            }
+        finally:
+            db.close()
+
+    except Exception as e:
+        logger.error(f"❌ Job B failed: {str(e)}")
+        return {
+            "success": False,
+            "message": f"Predictions update failed: {str(e)}",
+            "predictions_collected": 0,
+            "predictions_updated": 0,
+            "error": str(e)
+        }
 
 @app.post("/api/v1/admin/job/results-check")
 async def job_results_check():
-    """Simple Job D response"""
-    return {
-        "success": True,
-        "message": "Results check job (diagnostic - no database)",
-        "matches_checked": 0,
-        "database": "disabled"
-    }
+    """Job D: Results checker (every 30 minutes) - REAL IMPLEMENTATION"""
+    try:
+        if not db_initialized:
+            return {
+                "success": False,
+                "message": "Results check failed - database not initialized",
+                "error": db_error_message,
+                "matches_checked": 0,
+                "accuracy_evaluated": 0
+            }
+
+        # Import real cleanup service
+        from app.services.cleanup_service import cleanup_service
+
+        # Execute real results checking and accuracy evaluation
+        db = next(get_db())
+        try:
+            result = await cleanup_service.cleanup_finished_matches(db)
+            return {
+                "success": True,
+                "message": f"Results check completed successfully",
+                "matches_checked": result.get("matches_checked", 0),
+                "finished_matches": result.get("finished_matches", 0),
+                "accuracy_evaluations": result.get("accuracy_evaluations", 0),
+                "timestamp": datetime.now().isoformat()
+            }
+        finally:
+            db.close()
+
+    except Exception as e:
+        logger.error(f"❌ Job D failed: {str(e)}")
+        return {
+            "success": False,
+            "message": f"Results check failed: {str(e)}",
+            "matches_checked": 0,
+            "accuracy_evaluated": 0,
+            "error": str(e)
+        }
 
 @app.post("/api/v1/admin/job/odds-update")
 async def job_odds_update():
-    """Simple Job C response"""
-    return {
-        "success": True,
-        "message": "Odds job (diagnostic - no database)",
-        "odds_collected": 0,
-        "database": "disabled"
-    }
+    """Job C: Odds update (every 3 hours) - REAL IMPLEMENTATION"""
+    try:
+        if not db_initialized:
+            return {
+                "success": False,
+                "message": "Odds update failed - database not initialized",
+                "error": db_error_message,
+                "odds_collected": 0,
+                "fixtures_processed": 0
+            }
 
-# Data endpoints with safe database fallback
+        # Import real services
+        from app.services.odds_collector import odds_collector
+        from app.services.fixtures_collector import fixtures_collector
+
+        # Get daily fixtures for odds collection
+        db = next(get_db())
+        try:
+            fixture_ids = await fixtures_collector.get_daily_fixtures_for_tracking(db)
+
+            if not fixture_ids:
+                return {
+                    "success": True,
+                    "message": "No fixtures available for odds collection",
+                    "odds_collected": 0,
+                    "fixtures_processed": 0,
+                    "timestamp": datetime.now().isoformat()
+                }
+
+            # Collect odds for the fixtures
+            result = await odds_collector.collect_odds_for_fixtures(fixture_ids, db)
+            return {
+                "success": True,
+                "message": f"Odds update completed successfully",
+                "odds_collected": result.get("odds_collected", 0),
+                "fixtures_processed": len(fixture_ids),
+                "odds_updated": result.get("odds_updated", 0),
+                "timestamp": datetime.now().isoformat()
+            }
+        finally:
+            db.close()
+
+    except Exception as e:
+        logger.error(f"❌ Job C failed: {str(e)}")
+        return {
+            "success": False,
+            "message": f"Odds update failed: {str(e)}",
+            "odds_collected": 0,
+            "fixtures_processed": 0,
+            "error": str(e)
+        }
+
+# Data endpoints with real database queries
 @app.get("/api/v1/predictions/upcoming")
 async def get_predictions(days_ahead: int = 1, limit: int = 10):
-    """Predictions with database fallback"""
+    """Real predictions from database"""
     if not db_initialized:
         return [
             {
@@ -159,22 +303,71 @@ async def get_predictions(days_ahead: int = 1, limit: int = 10):
             }
         ]
 
-    # If database is available, return sample data for now (we'll add real queries later)
-    return [
-        {
-            "fixture_id": 12345,
-            "fixture_date": "2025-11-17T20:45:00Z",
-            "league_name": "Serie A",
-            "winner_team_name": "Juventus",
-            "advice": "Sample data - database connected but no real data yet",
-            "collected_at": datetime.now().isoformat(),
-            "database_status": "connected"
-        }
-    ]
+    try:
+        # Query real predictions from database
+        from app.models.predictions import MatchPredictions
+        from sqlalchemy import and_, or_
+
+        db = next(get_db())
+        try:
+            # Calculate date range
+            from datetime import datetime, timedelta
+            now = datetime.utcnow()
+            end_date = now + timedelta(days=days_ahead)
+
+            # Query upcoming predictions
+            predictions = db.query(MatchPredictions).filter(
+                and_(
+                    MatchPredictions.fixture_date >= now,
+                    MatchPredictions.fixture_date <= end_date
+                )
+            ).order_by(MatchPredictions.fixture_date).limit(limit).all()
+
+            # Format results
+            result = []
+            for pred in predictions:
+                result.append({
+                    "fixture_id": pred.fixture_id,
+                    "fixture_date": pred.fixture_date.isoformat(),
+                    "league_name": pred.league_name,
+                    "winner_team_name": pred.winner_team_name,
+                    "advice": pred.advice,
+                    "collected_at": pred.collected_at.isoformat(),
+                    "database_status": "real_data"
+                })
+
+            return result if result else [
+                {
+                    "fixture_id": 0,
+                    "fixture_date": datetime.now().isoformat(),
+                    "league_name": "No Data",
+                    "winner_team_name": "No predictions available",
+                    "advice": "Database connected but no upcoming predictions found",
+                    "collected_at": datetime.now().isoformat(),
+                    "database_status": "no_data"
+                }
+            ]
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        logger.error(f"Error fetching predictions: {e}")
+        return [
+            {
+                "fixture_id": 0,
+                "fixture_date": datetime.now().isoformat(),
+                "league_name": "Error",
+                "winner_team_name": "Database query failed",
+                "advice": f"Error: {str(e)}",
+                "collected_at": datetime.now().isoformat(),
+                "database_status": "error"
+            }
+        ]
 
 @app.get("/api/v1/fixtures/upcoming")
 async def get_fixtures(days_ahead: int = 1, limit: int = 10):
-    """Fixtures with database fallback"""
+    """Real fixtures from database"""
     if not db_initialized:
         return [
             {
@@ -189,19 +382,70 @@ async def get_fixtures(days_ahead: int = 1, limit: int = 10):
             }
         ]
 
-    # If database is available, return sample data for now
-    return [
-        {
-            "fixture_id": 12345,
-            "fixture_date": "2025-11-17T20:45:00Z",
-            "league_name": "Serie A",
-            "home_team": "Juventus",
-            "away_team": "Inter Milan",
-            "venue": "Allianz Stadium",
-            "status": "Not Started",
-            "database_status": "connected"
-        }
-    ]
+    try:
+        # Query real fixtures from database
+        from app.models.fixtures import MatchFixtures
+        from sqlalchemy import and_
+
+        db = next(get_db())
+        try:
+            # Calculate date range
+            from datetime import datetime, timedelta
+            now = datetime.utcnow()
+            end_date = now + timedelta(days=days_ahead)
+
+            # Query upcoming fixtures
+            fixtures = db.query(MatchFixtures).filter(
+                and_(
+                    MatchFixtures.fixture_date >= now,
+                    MatchFixtures.fixture_date <= end_date
+                )
+            ).order_by(MatchFixtures.fixture_date).limit(limit).all()
+
+            # Format results
+            result = []
+            for fix in fixtures:
+                result.append({
+                    "fixture_id": fix.fixture_id,
+                    "fixture_date": fix.fixture_date.isoformat(),
+                    "league_name": fix.league_name,
+                    "home_team": fix.home_team,
+                    "away_team": fix.away_team,
+                    "venue": fix.venue,
+                    "status": fix.status,
+                    "database_status": "real_data"
+                })
+
+            return result if result else [
+                {
+                    "fixture_id": 0,
+                    "fixture_date": datetime.now().isoformat(),
+                    "league_name": "No Data",
+                    "home_team": "No fixtures available",
+                    "away_team": "No fixtures available",
+                    "venue": "N/A",
+                    "status": "No Data",
+                    "database_status": "no_data"
+                }
+            ]
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        logger.error(f"Error fetching fixtures: {e}")
+        return [
+            {
+                "fixture_id": 0,
+                "fixture_date": datetime.now().isoformat(),
+                "league_name": "Error",
+                "home_team": "Database query failed",
+                "away_team": "Database query failed",
+                "venue": "N/A",
+                "status": f"Error: {str(e)}",
+                "database_status": "error"
+            }
+        ]
 
 @app.get("/api/v1/test")
 async def test_endpoint():
