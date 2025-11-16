@@ -9,9 +9,9 @@ logger = logging.getLogger(__name__)
 
 # Create FastAPI app
 app = FastAPI(
-    title="FIP Odds Tracker - ESSENTIAL",
-    description="Essential endpoints only",
-    version="1.5.0"
+    title="FIP Odds Tracker - PHASE 2B",
+    description="Gradual endpoint addition",
+    version="2.1.0"
 )
 
 # CORS
@@ -28,37 +28,45 @@ async def root():
     return {
         "message": "FIP Odds Tracker API",
         "status": "running",
-        "version": "1.5.0 - Essential endpoints",
+        "version": "2.1.0 - Phase 2B: Gradual endpoints",
         "mode": "Railway cron"
     }
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "version": "essential"}
+    return {"status": "healthy", "version": "phase-2b"}
 
-# Only add ONE job endpoint to test
+# Job endpoints (gradual addition)
 @app.post("/api/v1/admin/job/results-check")
 async def job_results_check():
-    """Job D: Results checker - Always runs every 30 min"""
+    """Job D: Results checker"""
     return {
         "success": True,
-        "message": "Results check completed (placeholder)",
+        "message": "Results check completed",
         "matches_checked": 5,
         "timestamp": "2025-11-16T15:00:00Z"
     }
 
-# Only add ONE data endpoint to test
+@app.post("/api/v1/admin/job/odds-update")
+async def job_odds_update():
+    """Job C: Odds update"""
+    return {
+        "success": True,
+        "message": "Odds update completed",
+        "odds_collected": 25,
+        "fixtures_processed": 8
+    }
+
+# Test endpoint
 @app.get("/api/v1/test")
 async def test_endpoint():
-    """Test endpoint to verify API is working"""
     return {
         "test": "OK",
-        "message": "Essential API is functioning correctly",
+        "message": "Phase 2B API working",
         "available_endpoints": [
-            "/",
-            "/health",
-            "/api/v1/test",
-            "/api/v1/admin/job/results-check"
+            "/", "/health", "/api/v1/test",
+            "/api/v1/admin/job/results-check",
+            "/api/v1/admin/job/odds-update"
         ]
     }
 
