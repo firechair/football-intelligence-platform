@@ -275,6 +275,68 @@ async def run_database_migration():
             "message": "Migration failed with exception"
         }
 
+@app.post("/api/v1/fix-schema")
+async def fix_database_schema(db: Session = Depends(get_db)):
+    """Manually fix database schema by adding missing columns"""
+    try:
+        logger.info("Manually fixing database schema...")
+
+        # Add missing columns to fixture_tracking_status table
+        from sqlalchemy import text
+
+        # Check if columns already exist and add them if missing
+        alter_commands = [
+            "ALTER TABLE fixture_tracking_status ADD COLUMN IF NOT EXISTS league_id INTEGER",
+            "ALTER TABLE fixture_tracking_status ADD COLUMN IF NOT EXISTS country_name VARCHAR(100)",
+            "ALTER TABLE fixture_tracking_status ADD COLUMN IF NOT EXISTS fixture_date TIMESTAMP",
+            "CREATE INDEX IF NOT EXISTS ix_fixture_tracking_status_league_id ON fixture_tracking_status(league_id)",
+            "CREATE INDEX IF NOT EXISTS ix_fixture_tracking_status_fixture_date ON fixture_tracking_status(fixture_date)"
+        ]
+
+        executed_commands = []
+        for cmd in alter_commands:
+            try:
+                logger.info(f"Executing: {cmd}")
+                db.execute(text(cmd))
+                executed_commands.append(cmd)
+            except Exception as cmd_error:
+                logger.warning(f"Command failed (might already exist): {cmd} - {cmd_error}")
+                executed_commands.append(f"FAILED: {cmd}")
+
+        # Also add fixture_date column to match_predictions if missing
+        prediction_commands = [
+            "ALTER TABLE match_predictions ADD COLUMN IF NOT EXISTS fixture_date TIMESTAMP",
+            "CREATE INDEX IF NOT EXISTS idx_predictions_fixture_date ON match_predictions(fixture_date)"
+        ]
+
+        for cmd in prediction_commands:
+            try:
+                logger.info(f"Executing: {cmd}")
+                db.execute(text(cmd))
+                executed_commands.append(cmd)
+            except Exception as cmd_error:
+                logger.warning(f"Command failed (might already exist): {cmd} - {cmd_error}")
+                executed_commands.append(f"FAILED: {cmd}")
+
+        db.commit()
+
+        return {
+            "success": True,
+            "message": "Database schema fixed successfully",
+            "executed_commands": executed_commands
+        }
+
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Schema fix error: {e}")
+        import traceback
+        return {
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+            "message": "Schema fix failed"
+        }
+
 # Railway port configuration
 if __name__ == "__main__":
     import uvicorn
