@@ -220,32 +220,58 @@ async def run_database_migration():
         logger.info("Running database migrations...")
         import subprocess
         import sys
+        import os
+
+        # Get current working directory and check if alembic is available
+        current_dir = os.getcwd()
+        logger.info(f"Current working directory: {current_dir}")
+
+        # Try to find alembic.ini
+        alembic_ini_path = os.path.join(current_dir, "alembic.ini")
+        if not os.path.exists(alembic_ini_path):
+            return {
+                "success": False,
+                "error": f"alembic.ini not found at {alembic_ini_path}",
+                "message": "Migration failed - alembic config not found"
+            }
 
         # Run alembic upgrade head
+        cmd = [sys.executable, "-m", "alembic", "upgrade", "head"]
+        logger.info(f"Running command: {' '.join(cmd)} in {current_dir}")
+
         result = subprocess.run(
-            [sys.executable, "-m", "alembic", "upgrade", "head"],
+            cmd,
             capture_output=True,
             text=True,
-            cwd="/app"  # Railway working directory
+            cwd=current_dir
         )
+
+        logger.info(f"Migration result code: {result.returncode}")
+        logger.info(f"Migration stdout: {result.stdout}")
+        logger.info(f"Migration stderr: {result.stderr}")
 
         if result.returncode == 0:
             return {
                 "success": True,
                 "message": "Database migrations completed successfully",
-                "output": result.stdout
+                "output": result.stdout,
+                "directory": current_dir
             }
         else:
             return {
                 "success": False,
                 "error": result.stderr,
-                "message": "Migration failed"
+                "stdout": result.stdout,
+                "message": "Migration failed",
+                "directory": current_dir
             }
     except Exception as e:
         logger.error(f"Migration error: {e}")
+        import traceback
         return {
             "success": False,
             "error": str(e),
+            "traceback": traceback.format_exc(),
             "message": "Migration failed with exception"
         }
 
