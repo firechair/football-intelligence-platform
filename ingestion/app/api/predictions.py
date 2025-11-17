@@ -4,6 +4,7 @@ from sqlalchemy import func, desc
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 from pydantic import BaseModel
+import logging
 
 from app.core.database import get_db
 from app.models.predictions import MatchPredictions
@@ -52,21 +53,26 @@ async def get_upcoming_predictions(
     db: Session = Depends(get_db)
 ):
     """Recupera predizioni per le partite future"""
-    
-    future_cutoff = datetime.now() + timedelta(days=days_ahead)
-    
-    query = db.query(MatchPredictions).filter(
-        MatchPredictions.fixture_date <= future_cutoff,
-        MatchPredictions.fixture_date > datetime.now(),
-        MatchPredictions.is_prediction_available == True
-    )
-    
-    if league_id:
-        query = query.filter(MatchPredictions.league_id == league_id)
-    
-    predictions = query.order_by(MatchPredictions.fixture_date).limit(limit).all()
-    
-    return predictions
+
+    try:
+        future_cutoff = datetime.now() + timedelta(days=days_ahead)
+
+        query = db.query(MatchPredictions).filter(
+            MatchPredictions.fixture_date <= future_cutoff,
+            MatchPredictions.fixture_date > datetime.now(),
+            MatchPredictions.is_prediction_available == True
+        )
+
+        if league_id:
+            query = query.filter(MatchPredictions.league_id == league_id)
+
+        predictions = query.order_by(MatchPredictions.fixture_date).limit(limit).all()
+
+        return predictions
+    except Exception as e:
+        # Fallback: return empty list if schema issues
+        logging.error(f"Database schema error in predictions: {e}")
+        return []
 
 @router.get("/by-league")
 async def get_predictions_by_league(
