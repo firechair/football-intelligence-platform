@@ -49,18 +49,18 @@ class PredictionsCollector:
         async def process_single_fixture(fixture_id):
             nonlocal predictions_collected, predictions_updated, processed_count
             async with semaphore:
-            try:
+                try:
                     processed_count += 1
-                
+
                     # Get prediction data
-                prediction_data = await football_api.get_predictions_for_fixture(fixture_id)
-                
-                if prediction_data:
-                    result = await self._process_fixture_prediction(fixture_id, prediction_data, db)
-                    
-                    if result["success"]:
-                        if result["is_update"]:
-                            predictions_updated += 1
+                    prediction_data = await football_api.get_predictions_for_fixture(fixture_id)
+
+                    if prediction_data:
+                        result = await self._process_fixture_prediction(fixture_id, prediction_data, db)
+
+                        if result["success"]:
+                            if result["is_update"]:
+                                predictions_updated += 1
                             else:
                                 predictions_collected += 1
                             return {"fixture_id": fixture_id, "success": True}
@@ -70,10 +70,10 @@ class PredictionsCollector:
                             return {"fixture_id": fixture_id, "success": False, "error": error_msg}
                     else:
                         return {"fixture_id": fixture_id, "success": False, "error": "No prediction data"}
-                    
-            except Exception as e:
+
+                except Exception as e:
                     error_msg = f"Fixture {fixture_id}: {str(e)}"
-                errors.append(error_msg)
+                    errors.append(error_msg)
                     return {"fixture_id": fixture_id, "success": False, "error": error_msg}
 
         # Launch ALL requests simultaneously for maximum speed
