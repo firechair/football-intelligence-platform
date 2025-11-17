@@ -275,6 +275,59 @@ async def run_database_migration():
             "message": "Migration failed with exception"
         }
 
+@app.post("/api/v1/init-database")
+async def init_database_schema(db: Session = Depends(get_db)):
+    """Initialize the database schema by creating all required tables"""
+    try:
+        logger.info("Initializing database schema...")
+
+        # Import all models to ensure they are registered
+        from app.models import odds_tracking, predictions
+        from sqlalchemy import text
+
+        # Create all tables
+        from app.core.database import engine
+        from app.models.odds_tracking import Base
+        from app.models.predictions import MatchPredictions
+
+        logger.info("Creating all database tables...")
+        Base.metadata.create_all(bind=engine)
+
+        # Test that tables were created
+        tables_created = []
+        test_queries = [
+            ("fixture_tracking_status", "SELECT COUNT(*) FROM fixture_tracking_status"),
+            ("match_predictions", "SELECT COUNT(*) FROM match_predictions"),
+            ("extended_odds_history", "SELECT COUNT(*) FROM extended_odds_history"),
+            ("bookmaker_info", "SELECT COUNT(*) FROM bookmaker_info")
+        ]
+
+        for table_name, query in test_queries:
+            try:
+                result = db.execute(text(query)).scalar()
+                tables_created.append(f"{table_name}: {result} rows")
+            except Exception as e:
+                tables_created.append(f"{table_name}: ERROR - {e}")
+
+        db.commit()
+
+        return {
+            "success": True,
+            "message": "Database schema initialized successfully",
+            "tables_created": tables_created
+        }
+
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Database initialization error: {e}")
+        import traceback
+        return {
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+            "message": "Database initialization failed"
+        }
+
 @app.post("/api/v1/fix-schema")
 async def fix_database_schema(db: Session = Depends(get_db)):
     """Manually fix database schema by adding missing columns"""
