@@ -160,3 +160,156 @@ class SmartAlerts(Base):
 
 # I modelli vengono importati da app.models per evitare conflitti
 # MatchPrediction è già definito in app.models.match_predictions
+
+# ==========================================
+# OPERATOR TABLES - Required for prediction system
+# ==========================================
+
+class FinishedFixtures(Base):
+    """Results of completed matches for accuracy tracking"""
+    __tablename__ = "finished_fixtures"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    fixture_id = Column(Integer, nullable=False, unique=True, index=True)
+    
+    # Match information
+    fixture_date = Column(DateTime, nullable=False, index=True)
+    league_id = Column(Integer, nullable=True, index=True)
+    league_name = Column(String(200), nullable=True)
+    country_name = Column(String(100), nullable=True)
+    home_team = Column(String(100), nullable=False)
+    away_team = Column(String(100), nullable=False)
+    
+    # Final results
+    home_score = Column(Integer, nullable=True)
+    away_score = Column(Integer, nullable=True)
+    winner = Column(String(10), nullable=True)  # "home", "away", "draw"
+    
+    # Statistics
+    halftime_home_score = Column(Integer, nullable=True)
+    halftime_away_score = Column(Integer, nullable=True)
+    total_goals = Column(Integer, nullable=True)
+    
+    # Status and metadata
+    status = Column(String(20), default="FT", index=True)  # FT = Full Time
+    collected_at = Column(DateTime, server_default=func.now())
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_fixture_date_status', 'fixture_date', 'status'),
+        Index('idx_league_date_finished', 'league_id', 'fixture_date'),
+    )
+
+class PredictionAccuracy(Base):
+    """Accuracy evaluations for predictions on finished matches"""
+    __tablename__ = "prediction_accuracy"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    fixture_id = Column(Integer, nullable=False, unique=True, index=True)
+    
+    # Actual results
+    actual_home_score = Column(Integer, nullable=True)
+    actual_away_score = Column(Integer, nullable=True)
+    actual_winner = Column(String(10), nullable=True)  # "home", "away", "draw"
+    actual_total_goals = Column(Integer, nullable=True)
+    
+    # Predictions made
+    predicted_winner_id = Column(Integer, nullable=True)
+    predicted_winner_name = Column(String(100), nullable=True)
+    predicted_win_or_draw = Column(Boolean, nullable=True)
+    predicted_under_over = Column(String(10), nullable=True)
+    predicted_goals_home = Column(String(10), nullable=True)
+    predicted_goals_away = Column(String(10), nullable=True)
+    prediction_advice = Column(Text, nullable=True)
+    
+    # Accuracy calculations
+    winner_accuracy = Column(Boolean, nullable=True)  # True if winner correct
+    goals_accuracy = Column(Boolean, nullable=True)   # True if under/over correct
+    total_goals_accuracy = Column(Boolean, nullable=True)  # True if goals correct
+    win_draw_accuracy = Column(Boolean, nullable=True)  # True if win/draw correct
+    
+    # Accuracy scores (0-100)
+    winner_score = Column(DECIMAL(5,2), nullable=True)  # Winner prediction score
+    goals_score = Column(DECIMAL(5,2), nullable=True)   # Goals prediction score
+    overall_score = Column(DECIMAL(5,2), nullable=True) # Overall accuracy score
+    
+    # Metadata
+    fixture_date = Column(DateTime, nullable=False, index=True)
+    league_id = Column(Integer, nullable=True, index=True)
+    league_name = Column(String(200), nullable=True)
+    home_team = Column(String(100), nullable=False)
+    away_team = Column(String(100), nullable=False)
+    
+    evaluated_at = Column(DateTime, server_default=func.now())
+    prediction_collected_at = Column(DateTime, nullable=True)
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_fixture_date_accuracy', 'fixture_date', 'evaluated_at'),
+        Index('idx_league_accuracy_score', 'league_id', 'overall_score'),
+        Index('idx_winner_accuracy', 'winner_accuracy', 'fixture_date'),
+    )
+
+class AccuracyStatistics(Base):
+    """Aggregated accuracy statistics by period/league"""
+    __tablename__ = "accuracy_statistics"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # Time period
+    period_type = Column(String(20), nullable=False, index=True)  # "daily", "weekly", "monthly", "league"
+    period_start = Column(DateTime, nullable=False, index=True)
+    period_end = Column(DateTime, nullable=False, index=True)
+    
+    # Filters
+    league_id = Column(Integer, nullable=True, index=True)
+    league_name = Column(String(200), nullable=True)
+    
+    # Statistics
+    total_predictions = Column(Integer, default=0)
+    winner_correct = Column(Integer, default=0)
+    goals_correct = Column(Integer, default=0)
+    win_draw_correct = Column(Integer, default=0)
+    
+    winner_accuracy_percent = Column(DECIMAL(5,2), nullable=True)
+    goals_accuracy_percent = Column(DECIMAL(5,2), nullable=True)
+    win_draw_accuracy_percent = Column(DECIMAL(5,2), nullable=True)
+    overall_accuracy_percent = Column(DECIMAL(5,2), nullable=True)
+    
+    average_winner_score = Column(DECIMAL(5,2), nullable=True)
+    average_goals_score = Column(DECIMAL(5,2), nullable=True)
+    average_overall_score = Column(DECIMAL(5,2), nullable=True)
+    
+    # Metadata
+    calculated_at = Column(DateTime, server_default=func.now())
+    fixtures_analyzed = Column(JSON, nullable=True)  # List of fixture_ids analyzed
+    
+    # Indexes
+    __table_args__ = (
+        Index('idx_period_league_stats', 'period_type', 'league_id', 'period_start'),
+        Index('idx_calculated_at_stats', 'calculated_at', 'period_type'),
+    )
+
+class FixtureTrackingStatus(Base):
+    """Status tracking for fixture data collection"""
+    __tablename__ = "fixture_tracking_status"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    fixture_id = Column(Integer, nullable=False, unique=True, index=True)
+    
+    # Status flags
+    predictions_collected = Column(Boolean, default=False)
+    odds_collected = Column(Boolean, default=False)
+    results_checked = Column(Boolean, default=False)
+    
+    # Timestamps
+    predictions_last_updated = Column(DateTime, nullable=True)
+    odds_last_updated = Column(DateTime, nullable=True)
+    results_last_checked = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    
+    # Metadata
+    collection_attempts = Column(Integer, default=0)
+    last_error = Column(Text, nullable=True)
+    error_count = Column(Integer, default=0)
