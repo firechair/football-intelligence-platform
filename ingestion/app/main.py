@@ -67,7 +67,7 @@ async def db_test_endpoint():
             
             # Test connection immediately - no table operations
             db = next(get_db())
-            result = db.execute("SELECT 1 as test").fetchone()
+            result = db.execute(text("SELECT 1 as test")).fetchone()
             db.close()
             
             db_initialized = True
@@ -92,7 +92,7 @@ async def db_test_endpoint():
     # Database already initialized
     try:
         db = next(get_db())
-        result = db.execute("SELECT 1 as test").fetchone()
+        result = db.execute(text("SELECT 1 as test")).fetchone()
         db.close()
         
         return {
