@@ -286,56 +286,54 @@ async def run_database_migration():
         }
 
 @app.post("/api/v1/init-database")
-async def init_database_schema(db: Session = Depends(get_db)):
-    """Initialize the database schema by creating all required tables"""
+async def init_database_schema():
+    """Initialize the database schema by running the init script"""
     try:
-        logger.info("Initializing database schema...")
+        logger.info("Running database initialization script...")
 
-        # Import all models to ensure they are registered
-        from app.models import odds_tracking, predictions
-        from sqlalchemy import text
+        # Run the init_db.py script
+        import subprocess
+        import sys
+        import os
 
-        # Create all tables
-        from app.core.database import engine
-        from app.models.odds_tracking import Base
-        from app.models.predictions import MatchPredictions
+        script_path = os.path.join(os.path.dirname(__file__), "init_db.py")
+        logger.info(f"Running script: {script_path}")
 
-        logger.info("Creating all database tables...")
-        Base.metadata.create_all(bind=engine)
+        result = subprocess.run(
+            [sys.executable, script_path],
+            capture_output=True,
+            text=True,
+            cwd=os.path.dirname(__file__)
+        )
 
-        # Test that tables were created
-        tables_created = []
-        test_queries = [
-            ("fixture_tracking_status", "SELECT COUNT(*) FROM fixture_tracking_status"),
-            ("match_predictions", "SELECT COUNT(*) FROM match_predictions"),
-            ("extended_odds_history", "SELECT COUNT(*) FROM extended_odds_history"),
-            ("bookmaker_info", "SELECT COUNT(*) FROM bookmaker_info")
-        ]
+        logger.info(f"Script exit code: {result.returncode}")
+        logger.info(f"Script stdout: {result.stdout}")
+        logger.info(f"Script stderr: {result.stderr}")
 
-        for table_name, query in test_queries:
-            try:
-                result = db.execute(text(query)).scalar()
-                tables_created.append(f"{table_name}: {result} rows")
-            except Exception as e:
-                tables_created.append(f"{table_name}: ERROR - {e}")
-
-        db.commit()
-
-        return {
-            "success": True,
-            "message": "Database schema initialized successfully",
-            "tables_created": tables_created
-        }
+        if result.returncode == 0:
+            return {
+                "success": True,
+                "message": "Database schema initialized successfully",
+                "script_output": result.stdout,
+                "script_path": script_path
+            }
+        else:
+            return {
+                "success": False,
+                "error": result.stderr,
+                "stdout": result.stdout,
+                "message": "Database initialization script failed",
+                "script_path": script_path
+            }
 
     except Exception as e:
-        db.rollback()
         logger.error(f"Database initialization error: {e}")
         import traceback
         return {
             "success": False,
             "error": str(e),
             "traceback": traceback.format_exc(),
-            "message": "Database initialization failed"
+            "message": "Database initialization failed with exception"
         }
 
 @app.post("/api/v1/fix-schema")
