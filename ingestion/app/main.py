@@ -213,6 +213,42 @@ async def get_predictions(days_ahead: int = 1, limit: int = 10):
     except Exception as e:
         return [{"database_status": "error", "error": str(e)}]
 
+@app.post("/api/v1/migrate")
+async def run_database_migration():
+    """Run database migrations to update schema"""
+    try:
+        logger.info("Running database migrations...")
+        import subprocess
+        import sys
+
+        # Run alembic upgrade head
+        result = subprocess.run(
+            [sys.executable, "-m", "alembic", "upgrade", "head"],
+            capture_output=True,
+            text=True,
+            cwd="/app"  # Railway working directory
+        )
+
+        if result.returncode == 0:
+            return {
+                "success": True,
+                "message": "Database migrations completed successfully",
+                "output": result.stdout
+            }
+        else:
+            return {
+                "success": False,
+                "error": result.stderr,
+                "message": "Migration failed"
+            }
+    except Exception as e:
+        logger.error(f"Migration error: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "message": "Migration failed with exception"
+        }
+
 # Railway port configuration
 if __name__ == "__main__":
     import uvicorn
