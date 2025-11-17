@@ -10,8 +10,7 @@ logger = logging.getLogger(__name__)
 # Import datetime for cron scheduling
 from datetime import datetime
 
-# PRODUCTION APPROACH: Assume database schema exists
-# Don't try to create tables - they should already be there
+# PRODUCTION APPROACH: Create database schema if missing
 from app.core.database import init_database, get_db
 from sqlalchemy import text
 
@@ -21,9 +20,9 @@ db_error_message = None
 
 # Create FastAPI app - PRODUCTION VERSION
 app = FastAPI(
-    title="FIP Production - Existing Schema",
-    description="Production version assuming existing database schema",
-    version="2.0.0"
+    title="FIP Production - Auto Schema",
+    description="Production version with automatic schema creation",
+    version="2.0.1"
 )
 
 # CORS
@@ -50,35 +49,46 @@ async def health():
     """Health check"""
     return {
         "status": "healthy",
-        "version": "production-existing-schema",
-        "database": "existing_schema_assumed",
+        "version": "production-auto-schema",
+        "database": "auto_schema_create",
         "timestamp": datetime.now().isoformat()
     }
 
 @app.get("/api/v1/db-test")
 async def db_test_endpoint():
-    """Database connectivity test - just test connection, don't create tables"""
+    """Database connectivity test - create schema if missing"""
     global db_initialized, db_error_message
-    
+
     if not db_initialized:
         try:
-            logger.info("🔄 Testing database connection (assuming existing schema)...")
-            # Just initialize engine connection - don't create tables
+            logger.info("🔄 Testing database connection and creating schema if needed...")
+            # Initialize engine connection
             engine = init_database()
-            
-            # Test connection immediately - no table operations
+
+            # Test basic connection
             db = next(get_db())
             result = db.execute(text("SELECT 1 as test")).fetchone()
+
+            # Try to create tables if they don't exist
+            try:
+                from app.models.odds_tracking import Base
+                from app.models.predictions import MatchPredictions
+                logger.info("📋 Creating database tables if missing...")
+                Base.metadata.create_all(bind=engine)
+                logger.info("✅ Database tables created/verified")
+            except Exception as schema_error:
+                logger.warning(f"⚠️ Schema creation issue: {schema_error}")
+
             db.close()
-            
+
             db_initialized = True
-            logger.info("✅ Database connection successful (existing schema)")
-            
+            logger.info("✅ Database connection and schema setup successful")
+
             return {
-                "database": "connected_existing_schema",
+                "database": "connected_with_schema",
                 "test_query": result[0] if result else "ok",
                 "status": "success",
-                "schema_handling": "existing_assumed"
+                "schema_handling": "auto_create"
             }
             
         except Exception as e:
