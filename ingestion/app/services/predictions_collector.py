@@ -26,41 +26,41 @@ class PredictionsCollector:
         - Batch commits per performance
         """
         logger.info("🚀 ULTRA FAST: Starting parallel daily predictions collection")
-
+        
         # Get fixtures needing predictions
         fixture_ids = await self._get_daily_fixtures_only(db)
-
+        
         if not fixture_ids:
             logger.info("No daily fixtures found for predictions")
             return {"fixtures_processed": 0, "predictions_collected": 0, "errors": []}
-
+        
         logger.info(f"📊 Found {len(fixture_ids)} fixtures needing predictions")
         total_fixtures = len(fixture_ids)
 
         # ULTRA FAST: Maximum parallel processing
         logger.info(f"⚡ Processing {total_fixtures} fixtures with MAXIMUM parallelism (50 concurrent)")
-
+        
         semaphore = asyncio.Semaphore(50)  # Maximum parallelism for speed
         predictions_collected = 0
         predictions_updated = 0
         errors = []
         processed_count = 0
-
+        
         async def process_single_fixture(fixture_id):
             nonlocal predictions_collected, predictions_updated, processed_count
             async with semaphore:
-                try:
+            try:
                     processed_count += 1
-
+                
                     # Get prediction data
-                    prediction_data = await football_api.get_predictions_for_fixture(fixture_id)
-
-                    if prediction_data:
-                        result = await self._process_fixture_prediction(fixture_id, prediction_data, db)
-
-                        if result["success"]:
-                            if result["is_update"]:
-                                predictions_updated += 1
+                prediction_data = await football_api.get_predictions_for_fixture(fixture_id)
+                
+                if prediction_data:
+                    result = await self._process_fixture_prediction(fixture_id, prediction_data, db)
+                    
+                    if result["success"]:
+                        if result["is_update"]:
+                            predictions_updated += 1
                             else:
                                 predictions_collected += 1
                             return {"fixture_id": fixture_id, "success": True}
@@ -70,10 +70,10 @@ class PredictionsCollector:
                             return {"fixture_id": fixture_id, "success": False, "error": error_msg}
                     else:
                         return {"fixture_id": fixture_id, "success": False, "error": "No prediction data"}
-
-                except Exception as e:
+                    
+            except Exception as e:
                     error_msg = f"Fixture {fixture_id}: {str(e)}"
-                    errors.append(error_msg)
+                errors.append(error_msg)
                     return {"fixture_id": fixture_id, "success": False, "error": error_msg}
 
         # Launch ALL requests simultaneously for maximum speed
@@ -93,7 +93,7 @@ class PredictionsCollector:
         failed_results = [r for r in results if isinstance(r, dict) and not r.get("success")]
 
         success_rate = (len(successful_results) / total_fixtures * 100) if total_fixtures > 0 else 0
-
+        
         stats = {
             "fixtures_processed": total_fixtures,
             "predictions_collected": predictions_collected,
@@ -105,7 +105,7 @@ class PredictionsCollector:
             "success_rate": f"{success_rate:.1f}%",
             "speed": f"~{total_fixtures/13:.1f} predictions/min"  # Estimated based on testing
         }
-
+        
         logger.info(f"🎯 ULTRA FAST collection completed: {stats}")
         return stats
 
@@ -192,11 +192,28 @@ class PredictionsCollector:
         tomorrow = today + timedelta(days=1)
         
         # Prende TUTTE le fixtures di oggi + domani (non filtra per odds)
-        daily_fixtures = db.query(FixtureTrackingStatus).filter(
-            FixtureTrackingStatus.fixture_date >= today,
-            FixtureTrackingStatus.fixture_date < tomorrow + timedelta(days=1),  # Fino alla fine di domani
-            FixtureTrackingStatus.tracking_status.in_(["pending", "active"])
-        ).order_by(FixtureTrackingStatus.fixture_date.asc()).all()
+        # Use raw SQL to avoid column issues
+        from sqlalchemy import text
+        query = text("""
+            SELECT fixture_id, fixture_date, tracking_status
+            FROM fixture_tracking_status
+            WHERE fixture_date >= :today
+            AND fixture_date < :tomorrow
+            AND tracking_status IN ('pending', 'active')
+            ORDER BY fixture_date ASC
+        """)
+
+        result = db.execute(query, {"today": today, "tomorrow": tomorrow + timedelta(days=1)})
+        daily_fixtures = result.fetchall()
+
+        # Convert to objects for compatibility
+        class MockFixture:
+            def __init__(self, fixture_id, fixture_date, tracking_status):
+                self.fixture_id = fixture_id
+                self.fixture_date = fixture_date
+                self.tracking_status = tracking_status
+
+        daily_fixtures = [MockFixture(row[0], row[1], row[2]) for row in daily_fixtures]
         
         fixture_ids = [f.fixture_id for f in daily_fixtures]
         
@@ -248,13 +265,25 @@ class PredictionsCollector:
             if not winner or winner.get("name") is None or "No predictions available" in advice:
                 return {"success": False, "is_update": False, "reason": "No meaningful predictions"}
             
-            # Get fixture info
-            fixture_info = db.query(FixtureTrackingStatus).filter(
-                FixtureTrackingStatus.fixture_id == fixture_id
-            ).first()
-            
-            if not fixture_info:
+            # Get fixture info using raw SQL to avoid column issues
+            from sqlalchemy import text
+            query = text("""
+                SELECT fixture_id, fixture_date
+                FROM fixture_tracking_status
+                WHERE fixture_id = :fixture_id
+            """)
+            result = db.execute(query, {"fixture_id": fixture_id}).first()
+
+            if not result:
                 return {"success": False, "is_update": False, "reason": "Fixture not found"}
+
+            # Create a mock object for compatibility
+            class MockFixtureInfo:
+                def __init__(self, fixture_id, fixture_date):
+                    self.fixture_id = fixture_id
+                    self.fixture_date = fixture_date
+
+            fixture_info = MockFixtureInfo(result[0], result[1])
             
             # Check if prediction already exists
             existing_prediction = db.query(MatchPredictions).filter(
