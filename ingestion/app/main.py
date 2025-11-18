@@ -337,21 +337,54 @@ async def init_database_schema():
             "message": "Database initialization failed with exception"
         }
 
-@app.get("/api/v1/test-api")
-async def test_api_connection():
-    """Test the football API connection"""
+@app.get("/api/v1/debug-fixtures")
+async def debug_fixture_collection():
+    """Debug the fixture collection process step by step"""
     try:
+        from app.services.fixtures_collector import fixtures_collector
         from app.utils.football_api import football_api
 
-        # Test a simple API call
-        test_data = await football_api._make_request("fixtures", {"date": "2025-11-18"})
+        debug_info = {
+            "step1_api_available": True,
+            "step2_fixture_collection": False,
+            "step3_database_save": False
+        }
+
+        # Step 1: Test if we can call the API
+        try:
+            test_fixtures = await football_api.get_fixtures_by_date_range("2025-11-18", "2025-11-18")
+            debug_info["step1_api_result"] = f"Got {len(test_fixtures)} fixtures from API"
+            debug_info["step1_api_available"] = len(test_fixtures) > 0
+        except Exception as e:
+            debug_info["step1_api_result"] = f"API call failed: {str(e)}"
+            debug_info["step1_api_available"] = False
+
+        # Step 2: Test fixture collection
+        if debug_info["step1_api_available"]:
+            try:
+                collected = await fixtures_collector.collect_upcoming_fixtures(days_ahead=1)
+                debug_info["step2_fixture_collection"] = True
+                debug_info["step2_result"] = f"Collected {len(collected)} upcoming fixtures"
+            except Exception as e:
+                debug_info["step2_result"] = f"Collection failed: {str(e)}"
+
+        # Step 3: Test database save (if we have fixtures)
+        if debug_info.get("step2_fixture_collection"):
+            try:
+                from app.core.database import get_db
+                db = next(get_db())
+                await fixtures_collector.update_tracking_status(collected, db)
+                db.commit()
+                debug_info["step3_database_save"] = True
+                debug_info["step3_result"] = f"Saved {len(collected)} fixtures to database"
+                db.close()
+            except Exception as e:
+                debug_info["step3_result"] = f"Database save failed: {str(e)}"
 
         return {
-            "success": True,
-            "message": "API connection successful",
-            "fixtures_count": len(test_data.get("response", [])),
-            "api_key_configured": bool(football_api.headers.get("x-apisports-key")),
-            "base_url": football_api.base_url
+            "success": debug_info["step1_api_available"] and debug_info["step2_fixture_collection"] and debug_info["step3_database_save"],
+            "debug_info": debug_info,
+            "message": "Fixture collection debug completed"
         }
 
     except Exception as e:
@@ -360,7 +393,44 @@ async def test_api_connection():
             "success": False,
             "error": str(e),
             "traceback": traceback.format_exc(),
-            "message": "API connection failed"
+            "message": "Debug process failed"
+        }
+
+@app.get("/api/v1/test-api")
+async def test_api_connection():
+    """Test the football API connection"""
+    try:
+        import httpx
+        from app.core.config import settings
+
+        # Test direct API call
+        headers = {"x-apisports-key": settings.FOOTBALL_API_KEY}
+        url = f"{settings.FOOTBALL_API_BASE_URL}/fixtures"
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(url, headers=headers, params={"date": "2025-11-18"})
+            response.raise_for_status()
+            data = response.json()
+
+        return {
+            "success": True,
+            "message": "API connection successful",
+            "fixtures_count": len(data.get("response", [])),
+            "api_key_configured": bool(settings.FOOTBALL_API_KEY),
+            "api_key_prefix": settings.FOOTBALL_API_KEY[:10] + "..." if settings.FOOTBALL_API_KEY else None,
+            "base_url": settings.FOOTBALL_API_BASE_URL,
+            "response_keys": list(data.keys()) if isinstance(data, dict) else "not_dict"
+        }
+
+    except Exception as e:
+        import traceback
+        return {
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+            "message": "API connection failed",
+            "api_key_configured": bool(settings.FOOTBALL_API_KEY),
+            "base_url": settings.FOOTBALL_API_BASE_URL
         }
 
 @app.post("/api/v1/recreate-tables")
