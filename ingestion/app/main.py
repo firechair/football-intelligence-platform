@@ -337,6 +337,32 @@ async def init_database_schema():
             "message": "Database initialization failed with exception"
         }
 
+@app.get("/api/v1/test-api")
+async def test_api_connection():
+    """Test the football API connection"""
+    try:
+        from app.utils.football_api import football_api
+
+        # Test a simple API call
+        test_data = await football_api._make_request("fixtures", {"date": "2025-11-18"})
+
+        return {
+            "success": True,
+            "message": "API connection successful",
+            "fixtures_count": len(test_data.get("response", [])),
+            "api_key_configured": bool(football_api.headers.get("x-apisports-key")),
+            "base_url": football_api.base_url
+        }
+
+    except Exception as e:
+        import traceback
+        return {
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+            "message": "API connection failed"
+        }
+
 @app.post("/api/v1/recreate-tables")
 async def recreate_tables(db: Session = Depends(get_db)):
     """Drop and recreate all tables with correct schema"""
