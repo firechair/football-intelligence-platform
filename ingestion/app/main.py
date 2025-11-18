@@ -373,13 +373,15 @@ async def debug_fixture_collection():
             try:
                 from app.core.database import get_db
                 db = next(get_db())
-                await fixtures_collector.update_tracking_status(collected, db)
+                fixtures_collector.update_tracking_status(collected, db)
                 db.commit()
                 debug_info["step3_database_save"] = True
                 debug_info["step3_result"] = f"Saved {len(collected)} fixtures to database"
                 db.close()
             except Exception as e:
                 debug_info["step3_result"] = f"Database save failed: {str(e)}"
+                import traceback
+                debug_info["step3_traceback"] = traceback.format_exc()
 
         return {
             "success": debug_info["step1_api_available"] and debug_info["step2_fixture_collection"] and debug_info["step3_database_save"],
