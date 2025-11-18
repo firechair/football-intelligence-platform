@@ -337,71 +337,157 @@ async def init_database_schema():
             "message": "Database initialization failed with exception"
         }
 
+@app.post("/api/v1/recreate-tables")
+async def recreate_tables(db: Session = Depends(get_db)):
+    """Drop and recreate all tables with correct schema"""
+    try:
+        logger.info("Recreating database tables with correct schema...")
+
+        # Drop existing tables if they exist
+        from sqlalchemy import text
+
+        drop_commands = [
+            "DROP TABLE IF EXISTS fixture_tracking_status CASCADE",
+            "DROP TABLE IF EXISTS match_predictions CASCADE",
+            "DROP TABLE IF EXISTS extended_odds_history CASCADE",
+            "DROP TABLE IF EXISTS bookmaker_info CASCADE"
+        ]
+
+        for cmd in drop_commands:
+            try:
+                logger.info(f"Executing: {cmd}")
+                db.execute(text(cmd))
+            except Exception as e:
+                logger.warning(f"Drop command failed: {cmd} - {e}")
+
+        # Create tables with correct schema
+        from app.models.odds_tracking import Base
+        from app.models.predictions import MatchPredictions
+
+        logger.info("Creating tables with correct schema...")
+        Base.metadata.create_all(bind=db.bind)
+
+        # Verify tables were created
+        tables_created = []
+        test_queries = [
+            ("fixture_tracking_status", "SELECT COUNT(*) FROM fixture_tracking_status"),
+            ("match_predictions", "SELECT COUNT(*) FROM match_predictions"),
+            ("extended_odds_history", "SELECT COUNT(*) FROM extended_odds_history"),
+            ("bookmaker_info", "SELECT COUNT(*) FROM bookmaker_info")
+        ]
+
+        for table_name, query in test_queries:
+            try:
+                result = db.execute(text(query)).scalar()
+                tables_created.append(f"✅ {table_name}: {result} rows")
+            except Exception as e:
+                tables_created.append(f"❌ {table_name}: ERROR - {e}")
+
+        db.commit()
+
+        return {
+            "success": True,
+            "message": "Database tables recreated with correct schema",
+            "tables_created": tables_created
+        }
+
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Table recreation error: {e}")
+        import traceback
+        return {
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+            "message": "Table recreation failed"
+        }
+
 @app.post("/api/v1/fix-schema")
 async def fix_database_schema(db: Session = Depends(get_db)):
     """Manually fix database schema by adding missing columns"""
     try:
         logger.info("Manually fixing database schema...")
 
-        # Add missing columns to fixture_tracking_status table
+        # Try individual ALTER TABLE commands for PostgreSQL compatibility
         from sqlalchemy import text
 
-        # Check if columns already exist and add them if missing
-        alter_commands = [
-            "ALTER TABLE fixture_tracking_status ADD COLUMN IF NOT EXISTS league_id INTEGER",
-            "ALTER TABLE fixture_tracking_status ADD COLUMN IF NOT EXISTS league_name VARCHAR(200)",
-            "ALTER TABLE fixture_tracking_status ADD COLUMN IF NOT EXISTS country_name VARCHAR(100)",
-            "ALTER TABLE fixture_tracking_status ADD COLUMN IF NOT EXISTS home_team VARCHAR(100)",
-            "ALTER TABLE fixture_tracking_status ADD COLUMN IF NOT EXISTS away_team VARCHAR(100)",
-            "ALTER TABLE fixture_tracking_status ADD COLUMN IF NOT EXISTS fixture_date TIMESTAMP",
-            "ALTER TABLE fixture_tracking_status ADD COLUMN IF NOT EXISTS home_team_logo VARCHAR(500)",
-            "ALTER TABLE fixture_tracking_status ADD COLUMN IF NOT EXISTS away_team_logo VARCHAR(500)",
-            "ALTER TABLE fixture_tracking_status ADD COLUMN IF NOT EXISTS league_logo VARCHAR(500)",
-            "ALTER TABLE fixture_tracking_status ADD COLUMN IF NOT EXISTS tracking_status VARCHAR(20) DEFAULT 'pending'",
-            "ALTER TABLE fixture_tracking_status ADD COLUMN IF NOT EXISTS first_odds_collected_at TIMESTAMP",
-            "ALTER TABLE fixture_tracking_status ADD COLUMN IF NOT EXISTS last_odds_collected_at TIMESTAMP",
-            "ALTER TABLE fixture_tracking_status ADD COLUMN IF NOT EXISTS total_collections INTEGER DEFAULT 0",
-            "ALTER TABLE fixture_tracking_status ADD COLUMN IF NOT EXISTS failed_collections INTEGER DEFAULT 0",
-            "ALTER TABLE fixture_tracking_status ADD COLUMN IF NOT EXISTS available_markets JSON",
-            "ALTER TABLE fixture_tracking_status ADD COLUMN IF NOT EXISTS bookmakers_found JSON",
-            "ALTER TABLE fixture_tracking_status ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
-            "ALTER TABLE fixture_tracking_status ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+        # First check what columns exist
+        try:
+            result = db.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name = 'fixture_tracking_status'"))
+            existing_columns = [row[0] for row in result.fetchall()]
+            logger.info(f"Existing columns in fixture_tracking_status: {existing_columns}")
+        except Exception as e:
+            logger.warning(f"Could not check existing columns: {e}")
+            existing_columns = []
+
+        # Add missing columns individually
+        columns_to_add = {
+            'league_id': 'INTEGER',
+            'league_name': 'VARCHAR(200)',
+            'country_name': 'VARCHAR(100)',
+            'home_team': 'VARCHAR(100)',
+            'away_team': 'VARCHAR(100)',
+            'fixture_date': 'TIMESTAMP',
+            'home_team_logo': 'VARCHAR(500)',
+            'away_team_logo': 'VARCHAR(500)',
+            'league_logo': 'VARCHAR(500)',
+            'tracking_status': "VARCHAR(20) DEFAULT 'pending'",
+            'first_odds_collected_at': 'TIMESTAMP',
+            'last_odds_collected_at': 'TIMESTAMP',
+            'total_collections': 'INTEGER DEFAULT 0',
+            'failed_collections': 'INTEGER DEFAULT 0',
+            'available_markets': 'JSON',
+            'bookmakers_found': 'JSON',
+            'created_at': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
+            'updated_at': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP'
+        }
+
+        executed_commands = []
+        for column_name, column_type in columns_to_add.items():
+            if column_name not in existing_columns:
+                cmd = f"ALTER TABLE fixture_tracking_status ADD COLUMN {column_name} {column_type}"
+                try:
+                    logger.info(f"Executing: {cmd}")
+                    db.execute(text(cmd))
+                    executed_commands.append(cmd)
+                except Exception as cmd_error:
+                    logger.warning(f"Command failed: {cmd} - {cmd_error}")
+                    executed_commands.append(f"FAILED: {cmd}")
+
+        # Create indexes
+        index_commands = [
             "CREATE INDEX IF NOT EXISTS ix_fixture_tracking_status_league_id ON fixture_tracking_status(league_id)",
             "CREATE INDEX IF NOT EXISTS ix_fixture_tracking_status_fixture_date ON fixture_tracking_status(fixture_date)",
             "CREATE INDEX IF NOT EXISTS ix_fixture_tracking_status_tracking_status ON fixture_tracking_status(tracking_status)"
         ]
 
-        executed_commands = []
-        for cmd in alter_commands:
+        for cmd in index_commands:
             try:
                 logger.info(f"Executing: {cmd}")
                 db.execute(text(cmd))
                 executed_commands.append(cmd)
             except Exception as cmd_error:
-                logger.warning(f"Command failed (might already exist): {cmd} - {cmd_error}")
-                executed_commands.append(f"FAILED: {cmd}")
+                logger.warning(f"Index creation failed: {cmd} - {cmd_error}")
 
-        # Also add fixture_date column to match_predictions if missing
-        prediction_commands = [
-            "ALTER TABLE match_predictions ADD COLUMN IF NOT EXISTS fixture_date TIMESTAMP",
-            "CREATE INDEX IF NOT EXISTS idx_predictions_fixture_date ON match_predictions(fixture_date)"
-        ]
-
-        for cmd in prediction_commands:
+        # Also fix match_predictions table
+        if 'fixture_date' not in existing_columns:  # Check match_predictions table
             try:
-                logger.info(f"Executing: {cmd}")
-                db.execute(text(cmd))
-                executed_commands.append(cmd)
-            except Exception as cmd_error:
-                logger.warning(f"Command failed (might already exist): {cmd} - {cmd_error}")
-                executed_commands.append(f"FAILED: {cmd}")
+                db.execute(text("ALTER TABLE match_predictions ADD COLUMN IF NOT EXISTS fixture_date TIMESTAMP"))
+                db.execute(text("CREATE INDEX IF NOT EXISTS idx_predictions_fixture_date ON match_predictions(fixture_date)"))
+                executed_commands.extend([
+                    "ALTER TABLE match_predictions ADD COLUMN fixture_date TIMESTAMP",
+                    "CREATE INDEX idx_predictions_fixture_date ON match_predictions(fixture_date)"
+                ])
+            except Exception as e:
+                logger.warning(f"match_predictions fix failed: {e}")
 
         db.commit()
 
         return {
             "success": True,
             "message": "Database schema fixed successfully",
-            "executed_commands": executed_commands
+            "executed_commands": executed_commands,
+            "existing_columns": existing_columns
         }
 
     except Exception as e:
