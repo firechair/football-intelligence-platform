@@ -373,8 +373,19 @@ async def debug_fixture_collection():
             try:
                 # Initialize database if not already done
                 from app.core.database import init_database, SessionLocal
+                debug_info["step3_init_check"] = f"SessionLocal is None: {SessionLocal is None}"
+
                 if SessionLocal is None:
-                    init_database()
+                    debug_info["step3_init_attempt"] = "Calling init_database()"
+                    try:
+                        engine = init_database()
+                        debug_info["step3_init_result"] = f"Engine created: {engine is not None}"
+                        debug_info["step3_sessionlocal_check"] = f"SessionLocal after init: {SessionLocal is not None}"
+                    except Exception as init_error:
+                        debug_info["step3_init_error"] = str(init_error)
+                        raise
+                else:
+                    debug_info["step3_init_result"] = "SessionLocal already initialized"
 
                 db = SessionLocal()
                 fixtures_collector.update_tracking_status(collected, db)
