@@ -19,6 +19,16 @@ from sqlalchemy.orm import Session
 db_initialized = False
 db_error_message = None
 
+# Initialize database immediately on startup
+logger.info("🚀 Initializing database on application startup...")
+try:
+    engine = init_database()
+    db_initialized = True
+    logger.info("✅ Database initialized successfully on startup")
+except Exception as e:
+    db_error_message = str(e)
+    logger.error(f"❌ Database initialization failed on startup: {e}")
+
 # Create FastAPI app - PRODUCTION VERSION
 app = FastAPI(
     title="FIP Production - Auto Schema",
