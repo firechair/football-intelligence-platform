@@ -13,6 +13,7 @@ from datetime import datetime
 # PRODUCTION APPROACH: Create database schema if missing
 from app.core.database import init_database, get_db
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 # Global database status
 db_initialized = False
