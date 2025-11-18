@@ -371,8 +371,8 @@ async def debug_fixture_collection():
         # Step 3: Test database save (if we have fixtures)
         if debug_info.get("step2_fixture_collection"):
             try:
-                from app.core.database import get_db
-                db = next(get_db())
+                from app.core.database import SessionLocal
+                db = SessionLocal()
                 fixtures_collector.update_tracking_status(collected, db)
                 db.commit()
                 debug_info["step3_database_save"] = True
