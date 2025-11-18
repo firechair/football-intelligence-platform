@@ -349,10 +349,26 @@ async def fix_database_schema(db: Session = Depends(get_db)):
         # Check if columns already exist and add them if missing
         alter_commands = [
             "ALTER TABLE fixture_tracking_status ADD COLUMN IF NOT EXISTS league_id INTEGER",
+            "ALTER TABLE fixture_tracking_status ADD COLUMN IF NOT EXISTS league_name VARCHAR(200)",
             "ALTER TABLE fixture_tracking_status ADD COLUMN IF NOT EXISTS country_name VARCHAR(100)",
+            "ALTER TABLE fixture_tracking_status ADD COLUMN IF NOT EXISTS home_team VARCHAR(100)",
+            "ALTER TABLE fixture_tracking_status ADD COLUMN IF NOT EXISTS away_team VARCHAR(100)",
             "ALTER TABLE fixture_tracking_status ADD COLUMN IF NOT EXISTS fixture_date TIMESTAMP",
+            "ALTER TABLE fixture_tracking_status ADD COLUMN IF NOT EXISTS home_team_logo VARCHAR(500)",
+            "ALTER TABLE fixture_tracking_status ADD COLUMN IF NOT EXISTS away_team_logo VARCHAR(500)",
+            "ALTER TABLE fixture_tracking_status ADD COLUMN IF NOT EXISTS league_logo VARCHAR(500)",
+            "ALTER TABLE fixture_tracking_status ADD COLUMN IF NOT EXISTS tracking_status VARCHAR(20) DEFAULT 'pending'",
+            "ALTER TABLE fixture_tracking_status ADD COLUMN IF NOT EXISTS first_odds_collected_at TIMESTAMP",
+            "ALTER TABLE fixture_tracking_status ADD COLUMN IF NOT EXISTS last_odds_collected_at TIMESTAMP",
+            "ALTER TABLE fixture_tracking_status ADD COLUMN IF NOT EXISTS total_collections INTEGER DEFAULT 0",
+            "ALTER TABLE fixture_tracking_status ADD COLUMN IF NOT EXISTS failed_collections INTEGER DEFAULT 0",
+            "ALTER TABLE fixture_tracking_status ADD COLUMN IF NOT EXISTS available_markets JSON",
+            "ALTER TABLE fixture_tracking_status ADD COLUMN IF NOT EXISTS bookmakers_found JSON",
+            "ALTER TABLE fixture_tracking_status ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+            "ALTER TABLE fixture_tracking_status ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
             "CREATE INDEX IF NOT EXISTS ix_fixture_tracking_status_league_id ON fixture_tracking_status(league_id)",
-            "CREATE INDEX IF NOT EXISTS ix_fixture_tracking_status_fixture_date ON fixture_tracking_status(fixture_date)"
+            "CREATE INDEX IF NOT EXISTS ix_fixture_tracking_status_fixture_date ON fixture_tracking_status(fixture_date)",
+            "CREATE INDEX IF NOT EXISTS ix_fixture_tracking_status_tracking_status ON fixture_tracking_status(tracking_status)"
         ]
 
         executed_commands = []
