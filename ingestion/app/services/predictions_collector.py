@@ -203,7 +203,7 @@ class PredictionsCollector:
             ORDER BY fixture_date ASC
         """)
 
-        result = db.execute(query, {"today": today, "tomorrow": tomorrow + timedelta(days=1)})
+        result = db.execute(query, {"today": today, "tomorrow": tomorrow})
         daily_fixtures = result.fetchall()
 
         # Convert to objects for compatibility
