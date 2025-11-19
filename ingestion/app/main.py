@@ -629,6 +629,7 @@ async def fix_database_schema(db: Session = Depends(get_db)):
             # Add missing columns to match_predictions
             pred_columns_to_add = {
                 'league_id': 'INTEGER',
+                'league_name': 'VARCHAR(200)',
                 'fixture_date': 'TIMESTAMP'
             }
 
