@@ -525,6 +525,34 @@ async def recreate_tables(db: Session = Depends(get_db)):
             "message": "Table recreation failed"
         }
 
+@app.get("/api/v1/check-predictions-schema")
+async def check_predictions_schema(db: Session = Depends(get_db)):
+    """Check what columns exist in match_predictions table"""
+    try:
+        from sqlalchemy import text
+
+        # Check what columns exist in match_predictions table
+        result = db.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name = 'match_predictions' ORDER BY column_name"))
+        columns = [row[0] for row in result.fetchall()]
+
+        # Check if we have any predictions
+        predictions_count = db.execute(text("SELECT COUNT(*) FROM match_predictions")).scalar()
+
+        return {
+            "success": True,
+            "match_predictions_columns": columns,
+            "predictions_count": predictions_count,
+            "missing_columns": [col for col in ['league_id', 'fixture_date'] if col not in columns]
+        }
+
+    except Exception as e:
+        import traceback
+        return {
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
 @app.post("/api/v1/fix-schema")
 async def fix_database_schema(db: Session = Depends(get_db)):
     """Manually fix database schema by adding missing columns"""
