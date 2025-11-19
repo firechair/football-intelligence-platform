@@ -25,6 +25,71 @@ try:
     engine = init_database()
     db_initialized = True
     logger.info("✅ Database initialized successfully on startup")
+
+    # Run schema fix automatically on startup
+    logger.info("🔧 Running automatic schema fix...")
+    try:
+        from app.core.database import get_db_url
+        from sqlalchemy import create_engine, text
+        import os
+
+        database_url = get_db_url()
+        engine_fix = create_engine(database_url)
+
+        with engine_fix.connect() as conn:
+            # Check if league_name column exists, if not add it
+            result = conn.execute(text("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'match_predictions' AND column_name = 'league_name'
+            """))
+            if not result.fetchone():
+                logger.info("📋 Adding missing league_name column to match_predictions table...")
+                # Add all potentially missing columns
+                columns_to_add = [
+                    "ALTER TABLE match_predictions ADD COLUMN IF NOT EXISTS league_name VARCHAR(200)",
+                    "ALTER TABLE match_predictions ADD COLUMN IF NOT EXISTS winner_team_id INTEGER",
+                    "ALTER TABLE match_predictions ADD COLUMN IF NOT EXISTS winner_team_name VARCHAR(100)",
+                    "ALTER TABLE match_predictions ADD COLUMN IF NOT EXISTS winner_comment VARCHAR(100)",
+                    "ALTER TABLE match_predictions ADD COLUMN IF NOT EXISTS win_or_draw BOOLEAN",
+                    "ALTER TABLE match_predictions ADD COLUMN IF NOT EXISTS under_over VARCHAR(10)",
+                    "ALTER TABLE match_predictions ADD COLUMN IF NOT EXISTS goals_home VARCHAR(10)",
+                    "ALTER TABLE match_predictions ADD COLUMN IF NOT EXISTS goals_away VARCHAR(10)",
+                    "ALTER TABLE match_predictions ADD COLUMN IF NOT EXISTS advice TEXT",
+                    "ALTER TABLE match_predictions ADD COLUMN IF NOT EXISTS percent_home VARCHAR(10)",
+                    "ALTER TABLE match_predictions ADD COLUMN IF NOT EXISTS percent_draw VARCHAR(10)",
+                    "ALTER TABLE match_predictions ADD COLUMN IF NOT EXISTS percent_away VARCHAR(10)",
+                    "ALTER TABLE match_predictions ADD COLUMN IF NOT EXISTS is_prediction_available BOOLEAN DEFAULT TRUE"
+                ]
+
+                for sql in columns_to_add:
+                    try:
+                        conn.execute(text(sql))
+                        logger.info(f"✅ Executed: {sql.split('ADD COLUMN')[1].strip()}")
+                    except Exception as col_e:
+                        logger.warning(f"⚠️  Column might already exist: {col_e}")
+
+                # Create indexes
+                indexes_to_create = [
+                    "CREATE INDEX IF NOT EXISTS idx_predictions_fixture_date ON match_predictions(fixture_date)",
+                    "CREATE INDEX IF NOT EXISTS idx_predictions_league_id ON match_predictions(league_id)",
+                    "CREATE INDEX IF NOT EXISTS idx_predictions_winner_team_id ON match_predictions(winner_team_id)"
+                ]
+
+                for sql in indexes_to_create:
+                    try:
+                        conn.execute(text(sql))
+                        logger.info(f"✅ Created index: {sql.split(' ON ')[1].split('(')[0]}")
+                    except Exception as idx_e:
+                        logger.warning(f"⚠️  Index might already exist: {idx_e}")
+
+                conn.commit()
+                logger.info("🎉 Schema fix completed successfully!")
+            else:
+                logger.info("✅ Schema already up to date")
+
+    except Exception as fix_e:
+        logger.warning(f"⚠️  Schema fix failed, but continuing: {fix_e}")
+
 except Exception as e:
     db_error_message = str(e)
     logger.error(f"❌ Database initialization failed on startup: {e}")
