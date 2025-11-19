@@ -13,6 +13,7 @@ from datetime import datetime
 # PRODUCTION APPROACH: Create database schema if missing
 from app.core.database import init_database, get_db
 from app.core.config import settings
+from app.core.scheduler import scheduler
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -89,6 +90,16 @@ try:
 
     except Exception as fix_e:
         logger.warning(f"⚠️  Schema fix failed, but continuing: {fix_e}")
+
+    # Start the data collection scheduler on startup
+    logger.info("🚀 Starting data collection scheduler...")
+    try:
+        # Run scheduler in background task (non-blocking)
+        import asyncio
+        asyncio.create_task(scheduler.start())
+        logger.info("✅ Data collection scheduler started successfully")
+    except Exception as sched_e:
+        logger.warning(f"⚠️  Scheduler failed to start: {sched_e}")
 
 except Exception as e:
     db_error_message = str(e)
