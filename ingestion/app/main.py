@@ -211,20 +211,38 @@ async def get_predictions(days_ahead: int = 1, limit: int = 10):
         try:
             now = datetime.utcnow()
             end_date = now + timedelta(days=days_ahead)
-            
-            predictions = db.query(MatchPredictions).filter(
-                and_(MatchPredictions.fixture_date >= now, MatchPredictions.fixture_date <= end_date)
-            ).order_by(MatchPredictions.fixture_date).limit(limit).all()
-            
+
+            # Use raw SQL to avoid schema issues
+            from sqlalchemy import text
+            query = text("""
+                SELECT
+                    fixture_id,
+                    fixture_date,
+                    winner_team_name,
+                    advice,
+                    collected_at,
+                    is_prediction_available
+                FROM match_predictions
+                WHERE fixture_date >= :fixture_date_1 AND fixture_date <= :fixture_date_2
+                ORDER BY fixture_date
+                LIMIT :param_1
+            """)
+
+            predictions = db.execute(query, {
+                "fixture_date_1": now,
+                "fixture_date_2": end_date,
+                "param_1": limit
+            }).fetchall()
+
             result = []
             for pred in predictions:
                 result.append({
-                    "fixture_id": pred.fixture_id,
-                    "fixture_date": pred.fixture_date.isoformat(),
-                    "league_name": pred.league_name,
-                    "winner_team_name": pred.winner_team_name,
-                    "advice": pred.advice,
-                    "collected_at": pred.collected_at.isoformat(),
+                    "fixture_id": pred[0],
+                    "fixture_date": pred[1].isoformat() if pred[1] else None,
+                    "winner_team_name": pred[2],
+                    "advice": pred[3],
+                    "collected_at": pred[4].isoformat() if pred[4] else None,
+                    "is_prediction_available": pred[5],
                     "database_status": "real_data"
                 })
             
