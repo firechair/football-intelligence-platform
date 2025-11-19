@@ -29,11 +29,10 @@ try:
     # Run schema fix automatically on startup
     logger.info("🔧 Running automatic schema fix...")
     try:
-        from app.core.database import get_db_url
         from sqlalchemy import create_engine, text
-        import os
 
-        database_url = get_db_url()
+        # Use the same database URL that was just initialized
+        database_url = settings.DATABASE_URL
         engine_fix = create_engine(database_url)
 
         with engine_fix.connect() as conn:
