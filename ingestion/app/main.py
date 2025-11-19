@@ -542,7 +542,7 @@ async def check_predictions_schema(db: Session = Depends(get_db)):
             "success": True,
             "match_predictions_columns": columns,
             "predictions_count": predictions_count,
-            "missing_columns": [col for col in ['league_id', 'fixture_date'] if col not in columns]
+            "missing_columns": [col for col in ['league_id', 'league_name', 'fixture_date'] if col not in columns]
         }
 
     except Exception as e:
