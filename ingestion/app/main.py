@@ -712,7 +712,20 @@ async def fix_database_schema(db: Session = Depends(get_db)):
             pred_columns_to_add = {
                 'league_id': 'INTEGER',
                 'league_name': 'VARCHAR(200)',
-                'fixture_date': 'TIMESTAMP'
+                'fixture_date': 'TIMESTAMP',
+                'winner_team_id': 'INTEGER',
+                'winner_team_name': 'VARCHAR(100)',
+                'winner_comment': 'VARCHAR(100)',
+                'win_or_draw': 'BOOLEAN',
+                'under_over': 'VARCHAR(10)',
+                'goals_home': 'VARCHAR(10)',
+                'goals_away': 'VARCHAR(10)',
+                'advice': 'TEXT',
+                'percent_home': 'VARCHAR(10)',
+                'percent_draw': 'VARCHAR(10)',
+                'percent_away': 'VARCHAR(10)',
+                'collected_at': 'TIMESTAMP',
+                'is_prediction_available': 'BOOLEAN DEFAULT TRUE'
             }
 
             for col_name, col_type in pred_columns_to_add.items():
@@ -726,13 +739,21 @@ async def fix_database_schema(db: Session = Depends(get_db)):
                         executed_commands.append(f"FAILED match_predictions {col_name}: {col_error}")
                         logger.warning(f"Failed to add {col_name} to match_predictions: {col_error}")
 
-            # Create index for fixture_date if it exists
-            if 'fixture_date' in pred_columns or 'fixture_date' in [cmd.split()[-2] if 'fixture_date' in cmd else None for cmd in executed_commands]:
+            # Create indexes for match_predictions
+            pred_indexes = [
+                "CREATE INDEX IF NOT EXISTS idx_predictions_fixture_date ON match_predictions(fixture_date)",
+                "CREATE INDEX IF NOT EXISTS idx_predictions_league_id ON match_predictions(league_id)",
+                "CREATE INDEX IF NOT EXISTS idx_predictions_winner_team_id ON match_predictions(winner_team_id)",
+                "CREATE INDEX IF NOT EXISTS idx_predictions_available ON match_predictions(is_prediction_available)"
+            ]
+
+            for idx_cmd in pred_indexes:
                 try:
-                    db.execute(text("CREATE INDEX IF NOT EXISTS idx_predictions_fixture_date ON match_predictions(fixture_date)"))
-                    executed_commands.append("match_predictions: CREATE INDEX idx_predictions_fixture_date")
+                    db.execute(text(idx_cmd))
+                    executed_commands.append(f"match_predictions: {idx_cmd}")
+                    logger.info(f"Created index: {idx_cmd}")
                 except Exception as idx_error:
-                    logger.warning(f"Failed to create index on match_predictions.fixture_date: {idx_error}")
+                    logger.warning(f"Failed to create index {idx_cmd}: {idx_error}")
 
         except Exception as pred_error:
             executed_commands.append(f"match_predictions schema check failed: {pred_error}")
