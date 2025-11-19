@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 from typing import List
 
 from app.services.fixtures_collector import fixtures_collector
@@ -22,46 +22,99 @@ class OddsTrackingScheduler:
         self.last_predictions_date = None
     
     async def start(self):
-        """🚀 RAILWAY-COMPATIBLE: Single execution per startup, no continuous loop"""
+        """🚀 PRODUCTION SCHEDULER: Continuous execution with proper timing intervals"""
         if self.running:
             logger.warning("Scheduler already running")
             return
 
         self.running = True
-        logger.info("🚀 Starting FIP Scheduler (Railway-compatible single execution)")
+        logger.info("🚀 Starting FIP Production Scheduler")
+        logger.info("📋 Schedule: Job A (fixtures) every 6h, Job B (predictions) every 6h, Job C (odds) every 3h, Job D (results) every 30min")
 
         try:
-            # 🎯 SINGLE EXECUTION APPROACH for Railway
-            logger.info("🔄 Executing ONE complete collection cycle...")
+            # Initialize tracking variables
+            self.last_fixtures_daily = None
+            self.last_fixtures_future = None
+            self.last_predictions = None
+            self.last_odds = None
+            self.last_results_check = None
 
-            # 1. FIXTURES GIORNALIERE
-            await self._process_daily_fixtures()
-
-            # 2. PREDIZIONI per fixtures giornaliere (PRIORITÀ ALTA)
-            await self._process_daily_predictions()
-
-            # 3. QUOTE per fixtures giornaliere
-            await self._process_daily_odds()
-
-            # 4. FIXTURES FUTURE (solo se necessario)
-            await self._process_future_fixtures()
-
-            # 5. PREDIZIONI FUTURE
-            await self._process_future_predictions()
-
-            # 6. QUOTE FUTURE
-            await self._process_future_odds()
-
-            # 7. PULIZIA
-            await self._process_daily_cleanup()
-
-            logger.info("✅ Single collection cycle completed successfully!")
-            logger.info("💡 For continuous operation: Use Railway cron jobs or external scheduler")
+            # Start continuous scheduling loop
+            await self._run_scheduling_loop()
 
         except Exception as e:
             logger.error(f"Scheduler error: {str(e)}")
         finally:
             self.running = False
+
+    async def _run_scheduling_loop(self):
+        """Main scheduling loop with proper timing"""
+        logger.info("🔄 Starting continuous scheduling loop...")
+
+        while self.running:
+            try:
+                current_time = datetime.now()
+
+                # Job A - Fetch Fixtures (daily fixtures every 6 hours, future fixtures daily)
+                await self._check_and_run_job_a(current_time)
+
+                # Job B - Fetch Predictions (every 6 hours)
+                await self._check_and_run_job_b(current_time)
+
+                # Job C - Fetch Odds (every 3 hours)
+                await self._check_and_run_job_c(current_time)
+
+                # Job D - Match Result Checker (every 30 minutes)
+                await self._check_and_run_job_d(current_time)
+
+                # Wait 5 minutes before next check (fine-grained control)
+                await asyncio.sleep(300)  # 5 minutes
+
+            except Exception as e:
+                logger.error(f"Error in scheduling loop: {str(e)}")
+                await asyncio.sleep(60)  # Wait 1 minute on error
+
+    async def _check_and_run_job_a(self, current_time):
+        """Job A - Fetch Fixtures: Daily fixtures every 6h, future fixtures daily"""
+        # Daily fixtures - every 6 hours
+        if (self.last_fixtures_daily is None or
+            (current_time - self.last_fixtures_daily) >= timedelta(hours=6)):
+            logger.info("📅 Job A: Running daily fixtures collection")
+            await self._process_daily_fixtures()
+            self.last_fixtures_daily = current_time
+
+        # Future fixtures - once daily
+        if (self.last_fixtures_future is None or
+            current_time.date() != self.last_fixtures_future.date()):
+            logger.info("🔄 Job A: Running future fixtures collection")
+            await self._process_future_fixtures()
+            self.last_fixtures_future = current_time
+
+    async def _check_and_run_job_b(self, current_time):
+        """Job B - Fetch Predictions: Every 6 hours"""
+        if (self.last_predictions is None or
+            (current_time - self.last_predictions) >= timedelta(hours=6)):
+            logger.info("🔮 Job B: Running predictions collection")
+            await self._process_daily_predictions()
+            await self._process_future_predictions()
+            self.last_predictions = current_time
+
+    async def _check_and_run_job_c(self, current_time):
+        """Job C - Fetch Odds: Every 3 hours"""
+        if (self.last_odds is None or
+            (current_time - self.last_odds) >= timedelta(hours=3)):
+            logger.info("🎯 Job C: Running odds collection")
+            await self._process_daily_odds()
+            await self._process_future_odds()
+            self.last_odds = current_time
+
+    async def _check_and_run_job_d(self, current_time):
+        """Job D - Match Result Checker: Every 30 minutes"""
+        if (self.last_results_check is None or
+            (current_time - self.last_results_check) >= timedelta(minutes=30)):
+            logger.info("✅ Job D: Running result checker")
+            await self._process_results_check()
+            self.last_results_check = current_time
 
     async def run_daily_collection(self):
         """🎯 MANUAL DAILY COLLECTION - Can be called by cron jobs"""
@@ -137,130 +190,109 @@ class OddsTrackingScheduler:
     # ==========================================
     
     async def _process_daily_fixtures(self):
-        """📅 PROCESSA FIXTURES GIORNALIERE (1x/giorno)"""
-        from datetime import date
-        today = date.today()
-        
-        # Controlla se già processate oggi
-        if self.last_fixtures_date == today:
-            logger.info(f"📅 Daily fixtures already processed today ({today})")
-            return
-        
-        logger.info(f"📅 Processing DAILY fixtures for {today}")
-        
+        """📅 Job A - PROCESSA FIXTURES GIORNALIERE (ogni 6 ore)"""
+        logger.info("📅 Job A: Processing daily fixtures (today + tomorrow)")
+
         db = next(get_db())
         try:
-            # Raccolta fixtures giornaliere (oggi + domani)
+            # Raccolta fixtures giornaliere (oggi + domani) - ogni 6 ore
             daily_fixtures = await fixtures_collector.collect_upcoming_fixtures(days_ahead=1)
             await fixtures_collector.update_tracking_status(daily_fixtures, db)
-            logger.info(f"📅 Daily fixtures: {len(daily_fixtures)}")
-            
-            self.last_fixtures_date = today
-            logger.info(f"✅ Daily fixtures COMPLETED for {today}")
-            
+            logger.info(f"📅 Daily fixtures collected: {len(daily_fixtures)} fixtures")
+
         finally:
             db.close()
     
     async def _process_daily_predictions(self):
-        """🔮 PROCESSA PREDIZIONI GIORNALIERE (dopo fixtures)"""
-        from datetime import date
-        today = date.today()
-        
-        if self.last_predictions_date == today:
-            logger.info(f"🔮 Daily predictions already processed today ({today})")
-            return
-        
-        logger.info(f"🔮 Processing DAILY predictions for {today}")
-        
+        """🔮 Job B - PROCESSA PREDIZIONI GIORNALIERE (ogni 6 ore)"""
+        logger.info("🔮 Job B: Processing daily predictions (every 6 hours)")
+
         db = next(get_db())
         try:
-            # Usa il nuovo metodo ottimizzato (oggi + domani)
+            # Collect predictions for daily fixtures (today + tomorrow)
             stats = await predictions_collector.collect_daily_predictions_only(db)
-            logger.info(f"🔮 Daily predictions: {stats}")
-            self.last_predictions_date = today
-            logger.info(f"✅ Daily predictions COMPLETED for {today}")
-            
+            logger.info(f"🔮 Daily predictions collected: {stats}")
+
         finally:
             db.close()
     
     async def _process_daily_odds(self):
-        """🎯 PROCESSA QUOTE GIORNALIERE (tracking continuo per andamento nel tempo)"""
-        logger.info("🎯 Processing DAILY odds for continuous tracking")
+        """🎯 Job C - PROCESSA QUOTE GIORNALIERE (ogni 3 ore)"""
+        logger.info("🎯 Job C: Processing daily odds (every 3 hours)")
 
         db = next(get_db())
         try:
-            # Raccogli quote per TUTTE le partite giornaliere per tracking CONTINUO
+            # Collect odds for daily fixtures
             fixture_ids = await fixtures_collector.get_daily_fixtures_for_tracking(db)
 
             if fixture_ids:
-                # Non limitiamo più - vogliamo tracking completo per vedere andamento
                 stats = await odds_collector.collect_odds_for_fixtures(fixture_ids, db)
-                logger.info(f"🎯 Daily odds collected (continuous tracking): {stats}")
+                logger.info(f"🎯 Daily odds collected: {stats}")
             else:
-                logger.info("🎯 No daily fixtures for odds tracking")
+                logger.info("🎯 No daily fixtures for odds collection")
 
         finally:
             db.close()
     
     async def _process_future_fixtures(self):
-        """🔄 PROCESSA FIXTURES FUTURE (settimanale)"""
-        from datetime import date
-        today = date.today()
-        
-        # Solo una volta a settimana (lunedi) o se necessario
-        if today.weekday() != 0:  # Non lunedi
-            logger.info("🔄 Future fixtures: skipping (not Monday)")
-            return
-        
-        logger.info("🔄 Processing FUTURE fixtures (weekly)")
-        
+        """🔄 Job A - PROCESSA FIXTURES FUTURE (una volta al giorno)"""
+        logger.info("🔄 Job A: Processing future fixtures (7-14 days, daily)")
+
         db = next(get_db())
         try:
-            # Controlla se necessario
-            future_count = await self._count_future_fixtures(db)
-            if future_count >= 5000:  # Soglia sufficiente
-                logger.info(f"🔄 Future fixtures: {future_count} already sufficient")
-                return
-            
-            # Raccogli fixtures future
+            # Collect future fixtures (7-14 days ahead)
             future_fixtures = await fixtures_collector.collect_upcoming_fixtures(days_ahead=14)
             await fixtures_collector.update_tracking_status(future_fixtures, db)
-            logger.info(f"🔄 Future fixtures added: {len(future_fixtures)}")
-            
+            logger.info(f"🔄 Future fixtures collected: {len(future_fixtures)} fixtures")
+
         finally:
             db.close()
     
     async def _process_future_predictions(self):
-        """🔮 PROCESSA PREDIZIONI FUTURE (settimanale)"""
+        """🔮 Job B - PROCESSA PREDIZIONI FUTURE (settimanale - lunedì)"""
         from datetime import date
         today = date.today()
-        
-        if today.weekday() != 0:  # Solo lunedi
+
+        if today.weekday() != 0:  # Solo lunedì
             logger.info("🔮 Future predictions: skipping (not Monday)")
             return
-        
-        logger.info("🔮 Processing FUTURE predictions (weekly)")
-        
+
+        logger.info("🔮 Job B: Processing future predictions (weekly)")
+
         db = next(get_db())
         try:
             future_stats = await predictions_collector.collect_predictions_for_all_fixtures(db)
-            logger.info(f"🔮 Future predictions: {future_stats}")
-            
+            logger.info(f"🔮 Future predictions collected: {future_stats}")
+
         finally:
             db.close()
     
     async def _process_future_odds(self):
-        """🎯 PROCESSA QUOTE FUTURE (tracking continuo per andamento nel tempo)"""
-        logger.info("🎯 Processing FUTURE odds (continuous tracking)")
+        """🎯 Job C - PROCESSA QUOTE FUTURE (ogni 3 ore)"""
+        logger.info("🎯 Job C: Processing future odds (every 3 hours)")
 
         db = next(get_db())
         try:
-            # Raccogli quote per TUTTE le future fixtures (non limitato, per storico completo)
+            # Collect odds for future fixtures
             fixture_ids = await fixtures_collector.get_active_fixtures_for_tracking(db)
             if fixture_ids:
-                # Non limitiamo più - vogliamo tracking completo per vedere andamento
                 stats = await odds_collector.collect_odds_for_fixtures(fixture_ids, db)
-                logger.info(f"🎯 Future odds collected (continuous tracking): {stats}")
+                logger.info(f"🎯 Future odds collected: {stats}")
+
+        finally:
+            db.close()
+
+    async def _process_results_check(self):
+        """✅ Job D - Match Result Checker (ogni 30 minuti)"""
+        logger.info("✅ Processing match result checker")
+
+        db = next(get_db())
+        try:
+            # Check for finished matches and update results
+            # This would integrate with a results checking service
+            # For now, use the existing cleanup service which handles finished matches
+            result_check = await cleanup_service.cleanup_finished_matches(db)
+            logger.info(f"✅ Result checker processed: {result_check} matches")
 
         finally:
             db.close()
