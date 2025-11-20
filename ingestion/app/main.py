@@ -38,14 +38,25 @@ try:
         engine_fix = create_engine(database_url)
 
         with engine_fix.connect() as conn:
-            # Check if league_name column exists, if not add it
-            result = conn.execute(text("""
+            # Check if we have the correct modern schema (with proper column names)
+            required_columns = [
+                'league_name', 'winner_team_id', 'winner_team_name', 'winner_comment',
+                'win_or_draw', 'under_over', 'goals_home', 'goals_away', 'advice',
+                'percent_home', 'percent_draw', 'percent_away', 'is_prediction_available'
+            ]
+
+            existing_columns_result = conn.execute(text("""
                 SELECT column_name FROM information_schema.columns
-                WHERE table_name = 'match_predictions' AND column_name = 'league_name'
+                WHERE table_name = 'match_predictions'
             """))
-            if not result.fetchone():
-                logger.info("📋 Adding missing league_name column to match_predictions table...")
-                # Add all potentially missing columns
+            existing_columns = [row[0] for row in existing_columns_result.fetchall()]
+
+            missing_columns = [col for col in required_columns if col not in existing_columns]
+
+            if missing_columns:
+                logger.info(f"📋 Adding missing columns to match_predictions table: {missing_columns}")
+
+                # Add missing columns with proper names
                 columns_to_add = [
                     "ALTER TABLE match_predictions ADD COLUMN IF NOT EXISTS league_name VARCHAR(200)",
                     "ALTER TABLE match_predictions ADD COLUMN IF NOT EXISTS winner_team_id INTEGER",
@@ -73,7 +84,8 @@ try:
                 indexes_to_create = [
                     "CREATE INDEX IF NOT EXISTS idx_predictions_fixture_date ON match_predictions(fixture_date)",
                     "CREATE INDEX IF NOT EXISTS idx_predictions_league_id ON match_predictions(league_id)",
-                    "CREATE INDEX IF NOT EXISTS idx_predictions_winner_team_id ON match_predictions(winner_team_id)"
+                    "CREATE INDEX IF NOT EXISTS idx_predictions_winner_team_id ON match_predictions(winner_team_id)",
+                    "CREATE INDEX IF NOT EXISTS idx_predictions_available ON match_predictions(is_prediction_available)"
                 ]
 
                 for sql in indexes_to_create:
@@ -86,7 +98,7 @@ try:
                 conn.commit()
                 logger.info("🎉 Schema fix completed successfully!")
             else:
-                logger.info("✅ Schema already up to date")
+                logger.info("✅ Schema already up to date - all required columns present")
 
     except Exception as fix_e:
         logger.warning(f"⚠️  Schema fix failed, but continuing: {fix_e}")
