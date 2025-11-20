@@ -300,16 +300,16 @@ async def get_predictions(days_ahead: int = 1, limit: int = 10):
             now = datetime.utcnow()
             end_date = now + timedelta(days=days_ahead)
 
-            # Use raw SQL to match actual database column names
+            # Use raw SQL to match database column names (check both old and new columns)
             from sqlalchemy import text
             query = text("""
                 SELECT
                     fixture_id,
                     fixture_date,
-                    COALESCE(prediction_winner, '') as winner_team_name,
-                    COALESCE(prediction_advice, '') as advice,
-                    COALESCE(created_at, updated_at) as collected_at,
-                    1 as is_prediction_available
+                    COALESCE(winner_team_name, prediction_winner, '') as winner_team_name,
+                    COALESCE(advice, prediction_advice, '') as advice,
+                    COALESCE(collected_at, created_at, updated_at) as collected_at,
+                    COALESCE(is_prediction_available, 1) as is_prediction_available
                 FROM match_predictions
                 WHERE fixture_date >= :fixture_date_1 AND fixture_date <= :fixture_date_2
                 ORDER BY fixture_date
