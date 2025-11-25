@@ -2,6 +2,7 @@ import os
 import logging
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from app.api import admin, accuracy
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -132,6 +133,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include routers
+app.include_router(admin.router, prefix="/api/v1")
+app.include_router(accuracy.router, prefix="/api/v1/accuracy", tags=["accuracy"])
 
 @app.get("/")
 async def root():
@@ -309,7 +314,7 @@ async def get_predictions(days_ahead: int = 1, limit: int = 10):
                     COALESCE(winner_team_name, prediction_winner, '') as winner_team_name,
                     COALESCE(advice, prediction_advice, '') as advice,
                     COALESCE(collected_at, created_at, updated_at) as collected_at,
-                    COALESCE(is_prediction_available, 1) as is_prediction_available
+                    COALESCE(is_prediction_available, true) as is_prediction_available
                 FROM match_predictions
                 WHERE fixture_date >= :fixture_date_1 AND fixture_date <= :fixture_date_2
                 ORDER BY fixture_date
