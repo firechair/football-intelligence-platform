@@ -391,8 +391,11 @@ class LiveOddsMonitor:
         """📡 Ottieni ID partite attualmente live dal provider"""
         try:
             import httpx
-            api_key = "REDACTED"
-            url = "https://v3.football.api-sports.io/fixtures?live=all"
+            from app.core.config import settings
+            
+            # Use secure API key from settings
+            api_key = settings.FOOTBALL_API_KEY
+            url = f"{settings.FOOTBALL_API_BASE_URL}/fixtures?live=all"
 
             async with httpx.AsyncClient(timeout=10.0) as client:  # Timeout ridotto per velocità
                 response = await client.get(url, headers={"x-apisports-key": api_key})

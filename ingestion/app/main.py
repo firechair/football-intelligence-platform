@@ -14,7 +14,7 @@ from datetime import datetime
 # PRODUCTION APPROACH: Create database schema if missing
 from app.core.database import init_database, get_db
 from app.core.config import settings
-from app.core.scheduler import scheduler
+from app.core.scheduler import scheduler, live_odds_monitor
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -110,6 +110,8 @@ try:
         # Run scheduler in background task (non-blocking)
         import asyncio
         asyncio.create_task(scheduler.start())
+        # 🆕 Start Live Odds Monitor
+        asyncio.create_task(live_odds_monitor.start())
         logger.info("✅ Data collection scheduler started successfully")
     except Exception as sched_e:
         logger.warning(f"⚠️  Scheduler failed to start: {sched_e}")
