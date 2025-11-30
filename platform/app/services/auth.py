@@ -239,13 +239,29 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
             self.email = row.email
             self.hashed_password = row.hashed_password
             self.full_name = row.full_name
-            self.preferences = json.loads(row.preferences) if row.preferences else {}
+            try:
+                if isinstance(row.preferences, (dict, list)):
+                    self.preferences = row.preferences
+                elif isinstance(row.preferences, (str, bytes, bytearray)) and row.preferences:
+                    self.preferences = json.loads(row.preferences)
+                else:
+                    self.preferences = {}
+            except Exception:
+                self.preferences = {}
             self.created_at = row.created_at
             self.email_verified = row.email_verified or False
             self.email_verification_token = getattr(row, 'email_verification_token', None)
             self.two_factor_enabled = row.two_factor_enabled or False
             self.two_factor_secret = row.two_factor_secret
-            self.backup_codes = json.loads(row.backup_codes) if row.backup_codes else []
+            try:
+                if isinstance(row.backup_codes, (list, dict)):
+                    self.backup_codes = row.backup_codes if isinstance(row.backup_codes, list) else []
+                elif isinstance(row.backup_codes, (str, bytes, bytearray)) and row.backup_codes:
+                    self.backup_codes = json.loads(row.backup_codes)
+                else:
+                    self.backup_codes = []
+            except Exception:
+                self.backup_codes = []
             # Attach session info for convenience
             self._session_id = session_id
     

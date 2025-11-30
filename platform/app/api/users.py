@@ -159,7 +159,16 @@ def register_user(user: UserCreate, request: Request, db: Session = Depends(get_
                 self.username = row.username  
                 self.email = row.email
                 self.full_name = row.full_name
-                self.preferences = json.loads(row.preferences) if row.preferences else {}
+                # preferences can be returned as JSON (dict) or string; handle both safely
+                try:
+                    if isinstance(row.preferences, (dict, list)):
+                        self.preferences = row.preferences
+                    elif isinstance(row.preferences, (str, bytes, bytearray)) and row.preferences:
+                        self.preferences = json.loads(row.preferences)
+                    else:
+                        self.preferences = {}
+                except Exception:
+                    self.preferences = {}
                 self.created_at = row.created_at
                 self.email_verified = row.email_verified or False
                 self.email_verification_token = getattr(row, 'email_verification_token', None)
