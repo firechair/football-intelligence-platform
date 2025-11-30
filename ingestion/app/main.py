@@ -110,9 +110,12 @@ try:
         # Run scheduler in background task (non-blocking)
         import asyncio
         asyncio.create_task(scheduler.start())
-        # 🆕 Start Live Odds Monitor
-        asyncio.create_task(live_odds_monitor.start())
+        
+        # 🚫 DISABLED: Live Odds Monitor (to avoid hitting daily API limits)
+        # asyncio.create_task(live_odds_monitor.start())
+        
         logger.info("✅ Data collection scheduler started successfully")
+        logger.info("⚠️  Live Odds Monitor DISABLED (to preserve API limits)")
     except Exception as sched_e:
         logger.warning(f"⚠️  Scheduler failed to start: {sched_e}")
 

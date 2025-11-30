@@ -30,6 +30,12 @@ class PredictionAccuracyEvaluator:
         2. Per ogni fixture, chiama l'API per verificare se è finita
         3. Se finita (status=FT), salva il risultato in finished_fixtures
         
+        RATE LIMITING:
+        - Usa il global rate limiter in football_api.py (1 req/sec, max 2 concurrent)
+        - Sistema totale ha limite di 6 req/sec
+        - Altri job (fixtures, odds, predictions) usano stesso limiter
+        - Processo è sequenziale quindi non causa sovraccarico
+        
         Questo è molto più efficiente e affidabile rispetto a richiedere tutte le partite finite per data.
         """
         logger.info(f"Starting collection of finished fixtures for predictions in last {days_back} days")
@@ -47,6 +53,7 @@ class PredictionAccuracyEvaluator:
                 return 0
             
             logger.info(f"Found {len(predictions)} predictions to check for finished status")
+            logger.info(f"⚠️  This will take approximately {len(predictions)} seconds due to API rate limiting (1 req/sec)")
             
             # 2. Per ogni fixture con predizione, controlla se è finita
             saved_count = 0
@@ -63,6 +70,7 @@ class PredictionAccuracyEvaluator:
                         continue  # Già salvato
                     
                     # Chiama l'API per ottenere il risultato della partita
+                    # NOTA: football_api.get_fixture_results usa il global rate limiter (1 req/sec)
                     fixture_data = await football_api.get_fixture_results(fixture_id)
                     
                     if not fixture_data:
