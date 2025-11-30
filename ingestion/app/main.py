@@ -22,6 +22,10 @@ from sqlalchemy.orm import Session
 db_initialized = False
 db_error_message = None
 
+"""
+FIP Operator - Main Application
+Version: 2025.11.30 - Accuracy System Fix Deployed
+"""
 # Initialize database immediately on startup
 logger.info("🚀 Initializing database on application startup...")
 try:
