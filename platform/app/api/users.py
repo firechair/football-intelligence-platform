@@ -41,7 +41,7 @@ def get_db():
     finally:
         db.close()
 
-@router.post("/register", response_model=UserOut)
+@router.post("/register")
 def register_user(user: UserCreate, request: Request, db: Session = Depends(get_db)):
     """Registra nuovo utente con controlli di sicurezza"""
     
