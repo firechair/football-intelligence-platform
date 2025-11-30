@@ -1,3 +1,8 @@
+"""
+Accuracy Evaluator Service
+Version: 2025.11.30 - Date Normalization Fix + Error Reporting
+Commit: b316dd8 + 8f0540e
+"""
 import asyncio
 import logging
 from datetime import datetime, timedelta
