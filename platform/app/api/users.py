@@ -191,7 +191,14 @@ def register_user(user: UserCreate, request: Request, db: Session = Depends(get_
             # Don't fail registration if email sending fails
         
         logger.info(f"New user registered successfully: {username}")
-        return new_user
+        # Return a plain dict matching UserOut to avoid model coercion issues
+        return {
+            "id": new_user.id,
+            "username": new_user.username,
+            "email": new_user.email,
+            "full_name": new_user.full_name,
+            "preferences": new_user.preferences or {}
+        }
         
     except HTTPException as http_exc:
         # Re-raise HTTP exceptions (validation errors, etc.)
