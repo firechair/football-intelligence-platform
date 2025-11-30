@@ -14,6 +14,71 @@ _global_rate_limiter = asyncio.Semaphore(2)  # Massimo 2 chiamate simultanee
 _last_request_time = 0
 _request_spacing = 1.0  # 1 secondo tra richieste (1 req/sec)
 
+# 📊 API Statistics Tracker
+class APIStats:
+    """Global statistics tracker for football API calls"""
+    def __init__(self):
+        self.total_requests = 0
+        self.successful_requests = 0
+        self.failed_requests = 0
+        self.total_response_time = 0.0
+        self.last_request_time = None
+        self.endpoint_counts = {}  # endpoint -> count
+        self.error_counts = {}  # status_code -> count
+        self.hourly_requests = []  # list of (timestamp, endpoint)
+        self.daily_requests = []  # list of (timestamp, endpoint)
+    
+    def record_request(self, endpoint: str, success: bool, response_time: float, error_code: int = None):
+        """Record an API request"""
+        self.total_requests += 1
+        self.last_request_time = datetime.now()
+        
+        if success:
+            self.successful_requests += 1
+        else:
+            self.failed_requests += 1
+            if error_code:
+                self.error_counts[error_code] = self.error_counts.get(error_code, 0) + 1
+        
+        self.total_response_time += response_time
+        self.endpoint_counts[endpoint] = self.endpoint_counts.get(endpoint, 0) + 1
+        
+        # Track for hourly/daily stats (keep last 24 hours)
+        now = datetime.now()
+        self.hourly_requests.append((now, endpoint))
+        self.daily_requests.append((now, endpoint))
+        
+        # Cleanup old entries
+        cutoff_hour = now - timedelta(hours=1)
+        cutoff_day = now - timedelta(days=1)
+        self.hourly_requests = [(t, e) for t, e in self.hourly_requests if t > cutoff_hour]
+        self.daily_requests = [(t, e) for t, e in self.daily_requests if t > cutoff_day]
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """Get current statistics"""
+        avg_response_time = (self.total_response_time / self.total_requests) if self.total_requests > 0 else 0
+        success_rate = (self.successful_requests / self.total_requests * 100) if self.total_requests > 0 else 0
+        
+        return {
+            "total_requests": self.total_requests,
+            "successful_requests": self.successful_requests,
+            "failed_requests": self.failed_requests,
+            "success_rate_percent": round(success_rate, 2),
+            "average_response_time_ms": round(avg_response_time * 1000, 2),
+            "last_request_time": self.last_request_time.isoformat() if self.last_request_time else None,
+            "requests_last_hour": len(self.hourly_requests),
+            "requests_last_day": len(self.daily_requests),
+            "endpoint_breakdown": self.endpoint_counts,
+            "error_breakdown": self.error_counts,
+            "rate_limit_config": {
+                "max_concurrent": 2,
+                "request_spacing_seconds": _request_spacing
+            }
+        }
+
+# Global stats instance
+_api_stats = APIStats()
+
 class FootballAPIClient:
     def __init__(self):
         self.base_url = settings.FOOTBALL_API_BASE_URL
@@ -33,7 +98,9 @@ class FootballAPIClient:
     
     async def _make_request(self, endpoint: str, params: Dict[str, Any] = None) -> Dict[str, Any]:
         """Effettua richiesta API con rate limiting globale"""
-        global _global_rate_limiter, _last_request_time, _request_spacing
+        global _global_rate_limiter, _last_request_time, _request_spacing, _api_stats
+        
+        request_start_time = time.time()
         
         async with _global_rate_limiter:
             # Rate limiting globale: utilizza spacing globale
@@ -52,14 +119,23 @@ class FootballAPIClient:
                     response.raise_for_status()
                     
                     data = response.json()
-                    logger.info(f"API Request: {endpoint} - Status: {response.status_code}")
+                    response_time = time.time() - request_start_time
+                    
+                    # Record successful request
+                    _api_stats.record_request(endpoint, success=True, response_time=response_time)
+                    
+                    logger.info(f"API Request: {endpoint} - Status: {response.status_code} - Time: {response_time:.2f}s")
                     
                     return data
                     
             except httpx.HTTPStatusError as e:
+                response_time = time.time() - request_start_time
+                _api_stats.record_request(endpoint, success=False, response_time=response_time, error_code=e.response.status_code)
                 logger.error(f"HTTP error for {endpoint}: {e.response.status_code} - {e.response.text}")
                 raise
             except Exception as e:
+                response_time = time.time() - request_start_time
+                _api_stats.record_request(endpoint, success=False, response_time=response_time)
                 logger.error(f"Request error for {endpoint}: {str(e)}")
                 raise
     
@@ -137,7 +213,9 @@ class FootballAPIClient:
     # 🆕 NUOVO METODO
     async def _make_predictions_request(self, endpoint: str, params: Dict[str, Any] = None) -> Dict[str, Any]:
         """Effettua richiesta API per predizioni con rate limiting globale"""
-        global _global_rate_limiter, _last_request_time, _request_spacing
+        global _global_rate_limiter, _last_request_time, _request_spacing, _api_stats
+        
+        request_start_time = time.time()
         
         async with _global_rate_limiter:
             # Rate limiting globale: utilizza spacing globale
@@ -156,14 +234,23 @@ class FootballAPIClient:
                     response.raise_for_status()
                     
                     data = response.json()
-                    logger.info(f"API Request: {endpoint} - Status: {response.status_code}")
+                    response_time = time.time() - request_start_time
+                    
+                    # Record successful request
+                    _api_stats.record_request(endpoint, success=True, response_time=response_time)
+                    
+                    logger.info(f"API Request: {endpoint} - Status: {response.status_code} - Time: {response_time:.2f}s")
                     
                     return data
                     
             except httpx.HTTPStatusError as e:
+                response_time = time.time() - request_start_time
+                _api_stats.record_request(endpoint, success=False, response_time=response_time, error_code=e.response.status_code)
                 logger.error(f"HTTP error for {endpoint}: {e.response.status_code} - {e.response.text}")
                 raise
             except Exception as e:
+                response_time = time.time() - request_start_time
+                _api_stats.record_request(endpoint, success=False, response_time=response_time)
                 logger.error(f"Request error for {endpoint}: {str(e)}")
                 raise
 
