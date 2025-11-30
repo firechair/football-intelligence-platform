@@ -22,33 +22,69 @@ class PredictionAccuracyEvaluator:
         self.db = db
 
     async def collect_finished_fixtures(self, days_back: int = 7) -> int:
-        """Raccoglie i risultati delle partite finite negli ultimi N giorni"""
-        logger.info(f"Starting collection of finished fixtures for last {days_back} days")
+        """
+        Raccoglie i risultati delle partite finite controllando i match con predizioni.
+        
+        NUOVO APPROCCIO (corretto):
+        1. Ottiene fixture_ids dalla tabella match_predictions (solo fixture con predizioni)
+        2. Per ogni fixture, chiama l'API per verificare se è finita
+        3. Se finita (status=FT), salva il risultato in finished_fixtures
+        
+        Questo è molto più efficiente e affidabile rispetto a richiedere tutte le partite finite per data.
+        """
+        logger.info(f"Starting collection of finished fixtures for predictions in last {days_back} days")
 
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=days_back)
-
-        start_date_str = start_date.strftime("%Y-%m-%d")
-        end_date_str = end_date.strftime("%Y-%m-%d")
-
+        cutoff_date = datetime.now() - timedelta(days=days_back)
+        
         try:
-            # Recupera partite finite dall'API
-            finished_fixtures = await football_api.get_finished_fixtures_by_date_range(
-                start_date_str, end_date_str, status="FT"
-            )
-
+            # 1. Ottieni fixture_ids dalla tabella MatchPredictions
+            predictions = self.db.query(MatchPredictions).filter(
+                MatchPredictions.fixture_date >= cutoff_date
+            ).all()
+            
+            if not predictions:
+                logger.info("No predictions found in the specified date range")
+                return 0
+            
+            logger.info(f"Found {len(predictions)} predictions to check for finished status")
+            
+            # 2. Per ogni fixture con predizione, controlla se è finita
             saved_count = 0
-            for fixture_data in finished_fixtures:
+            for idx, prediction in enumerate(predictions):
                 try:
-                    fixture_id = fixture_data["fixture"]["id"]
-                    saved = self._save_finished_fixture(fixture_data)
-                    if saved:
-                        saved_count += 1
+                    fixture_id = prediction.fixture_id
+                    
+                    # Verifica se già abbiamo il risultato
+                    existing = self.db.query(FinishedFixtures).filter(
+                        FinishedFixtures.fixture_id == fixture_id
+                    ).first()
+                    
+                    if existing:
+                        continue  # Già salvato
+                    
+                    # Chiama l'API per ottenere il risultato della partita
+                    fixture_data = await football_api.get_fixture_results(fixture_id)
+                    
+                    if not fixture_data:
+                        continue  # Nessun dato disponibile
+                    
+                    # Verifica se la partita è finita (status = FT)
+                    status = fixture_data.get("fixture", {}).get("status", {}).get("short")
+                    if status == "FT":
+                        saved = self._save_finished_fixture(fixture_data)
+                        if saved:
+                            saved_count += 1
+                            logger.info(f"Saved finished fixture {fixture_id} ({saved_count}/{len(predictions)})")
+                    
+                    # Log progress ogni 50 fixtures
+                    if (idx + 1) % 50 == 0:
+                        logger.info(f"Checked {idx + 1}/{len(predictions)} predictions, saved {saved_count} finished fixtures")
+                        
                 except Exception as e:
-                    logger.error(f"Failed to save fixture {fixture_data.get('fixture', {}).get('id', 'unknown')}: {str(e)}")
+                    logger.error(f"Failed to check fixture {prediction.fixture_id}: {str(e)}")
                     continue
-
-            logger.info(f"Saved {saved_count} finished fixtures")
+            
+            logger.info(f"Finished checking {len(predictions)} predictions, saved {saved_count} finished fixtures")
             return saved_count
 
         except Exception as e:
