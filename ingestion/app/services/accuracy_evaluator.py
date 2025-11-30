@@ -40,7 +40,8 @@ class PredictionAccuracyEvaluator:
         """
         logger.info(f"Starting collection of finished fixtures for predictions in last {days_back} days")
 
-        cutoff_date = datetime.now() - timedelta(days=days_back)
+        # Normalize to start of day to ensure we catch all matches from that day
+        cutoff_date = (datetime.now() - timedelta(days=days_back)).replace(hour=0, minute=0, second=0, microsecond=0)
         
         try:
             # 1. Ottieni fixture_ids dalla tabella MatchPredictions
@@ -182,7 +183,8 @@ class PredictionAccuracyEvaluator:
 
     def _get_finished_fixtures_with_predictions(self, days_back: int) -> List[Dict[str, Any]]:
         """Recupera partite finite che hanno predizioni associate"""
-        cutoff_date = datetime.now() - timedelta(days=days_back)
+        # Normalize to start of day
+        cutoff_date = (datetime.now() - timedelta(days=days_back)).replace(hour=0, minute=0, second=0, microsecond=0)
 
         # Query per trovare partite finite con predizioni
         results = self.db.query(
