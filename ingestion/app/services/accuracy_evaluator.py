@@ -152,7 +152,7 @@ class PredictionAccuracyEvaluator:
             self.db.rollback()
             return False
 
-    async def evaluate_predictions_accuracy(self, days_back: int = 7) -> int:
+    async def evaluate_predictions_accuracy(self, days_back: int = 7) -> Dict[str, Any]:
         """Valuta l'accuratezza delle predizioni per partite finite"""
         logger.info(f"Starting prediction accuracy evaluation for last {days_back} days")
 
@@ -160,17 +160,25 @@ class PredictionAccuracyEvaluator:
         finished_with_predictions = self._get_finished_fixtures_with_predictions(days_back)
 
         evaluated_count = 0
+        errors = []
+        
         for fixture_data in finished_with_predictions:
             try:
                 evaluated = await self._evaluate_single_prediction(fixture_data)
                 if evaluated:
                     evaluated_count += 1
             except Exception as e:
-                logger.error(f"Failed to evaluate prediction for fixture {fixture_data['fixture_id']}: {str(e)}")
+                error_msg = f"Failed to evaluate prediction for fixture {fixture_data['fixture_id']}: {str(e)}"
+                logger.error(error_msg)
+                errors.append({"fixture_id": fixture_data['fixture_id'], "error": str(e)})
                 continue
 
         logger.info(f"Evaluated accuracy for {evaluated_count} predictions")
-        return evaluated_count
+        return {
+            "evaluated_count": evaluated_count,
+            "total_candidates": len(finished_with_predictions),
+            "errors": errors[:10]  # Return first 10 errors to avoid huge response
+        }
 
     def _get_finished_fixtures_with_predictions(self, days_back: int) -> List[Dict[str, Any]]:
         """Recupera partite finite che hanno predizioni associate"""
@@ -355,7 +363,7 @@ class PredictionAccuracyEvaluator:
             'overall_score': overall_score
         }
 
-    async def collect_and_evaluate_all(self, days_back: int = 7) -> Dict[str, int]:
+    async def collect_and_evaluate_all(self, days_back: int = 7) -> Dict[str, Any]:
         """Raccoglie risultati e valuta accuratezza in un'unica operazione"""
         logger.info(f"Starting complete accuracy evaluation for last {days_back} days")
 
@@ -363,11 +371,12 @@ class PredictionAccuracyEvaluator:
         fixtures_collected = await self.collect_finished_fixtures(days_back)
 
         # Poi valuta l'accuratezza delle predizioni
-        predictions_evaluated = await self.evaluate_predictions_accuracy(days_back)
+        evaluation_result = await self.evaluate_predictions_accuracy(days_back)
 
         result = {
             'fixtures_collected': fixtures_collected,
-            'predictions_evaluated': predictions_evaluated
+            'predictions_evaluated': evaluation_result["evaluated_count"],
+            'evaluation_details': evaluation_result
         }
 
         logger.info(f"Completed accuracy evaluation: {result}")
