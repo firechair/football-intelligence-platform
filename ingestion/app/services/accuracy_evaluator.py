@@ -31,10 +31,10 @@ class PredictionAccuracyEvaluator:
         3. Se finita (status=FT), salva il risultato in finished_fixtures
         
         RATE LIMITING:
-        - Usa il global rate limiter in football_api.py (1 req/sec, max 2 concurrent)
-        - Sistema totale ha limite di 6 req/sec
+        - Usa il global rate limiter in football_api.py (1 req/sec per processo, max 5 concurrent)
+        - Sistema totale: 5 processi × 1 req/sec = 5 req/sec MAX
         - Altri job (fixtures, odds, predictions) usano stesso limiter
-        - Processo è sequenziale quindi non causa sovraccarico
+        - Tutti i processi condividono lo stesso limite globale
         
         Questo è molto più efficiente e affidabile rispetto a richiedere tutte le partite finite per data.
         """

@@ -10,9 +10,10 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Rate limiter globale per tutte le chiamate API
-_global_rate_limiter = asyncio.Semaphore(2)  # Massimo 2 chiamate simultanee
+# CONFIGURAZIONE: 5 processi concorrenti max, 1 req/sec per processo = 5 req/sec totale
+_global_rate_limiter = asyncio.Semaphore(5)  # Massimo 5 chiamate simultanee
 _last_request_time = 0
-_request_spacing = 1.0  # 1 secondo tra richieste (1 req/sec)
+_request_spacing = 1.0  # 1 secondo tra richieste (1 req/sec per processo)
 
 # 📊 API Statistics Tracker
 class APIStats:
@@ -71,8 +72,9 @@ class APIStats:
             "endpoint_breakdown": self.endpoint_counts,
             "error_breakdown": self.error_counts,
             "rate_limit_config": {
-                "max_concurrent": 2,
-                "request_spacing_seconds": _request_spacing
+                "max_concurrent": 5,  # 5 processi simultanei
+                "request_spacing_seconds": _request_spacing,  # 1 req/sec per processo
+                "max_total_rate": "5 req/sec"  # 5 concurrent × 1 req/sec = 5 req/sec total
             }
         }
 
