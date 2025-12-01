@@ -2,7 +2,7 @@ import os
 import logging
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from app.api import admin, accuracy
+from app.api import admin, accuracy, fixtures as fixtures_api, assets as assets_api
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -146,6 +146,8 @@ app.add_middleware(
 # Include routers
 app.include_router(admin.router, prefix="/api/v1")
 app.include_router(accuracy.router, prefix="/api/v1/accuracy", tags=["accuracy"])
+app.include_router(fixtures_api.router, prefix="/api/v1")
+app.include_router(assets_api.router, prefix="/api/v1")
 
 @app.get("/")
 async def root():
