@@ -9,6 +9,8 @@ export async function POST(request: NextRequest) {
     const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://example.invalid';
     const endpoint = `${backendUrl}/api/football/accuracy/collect-and-evaluate?days_back=${days_back}`;
 
+    console.log(`[ACCURACY COLLECT API] Calling backend: ${endpoint}`);
+
     console.log(`[ACCURACY EVALUATE API] Calling backend: ${endpoint}`);
 
     const response = await fetch(endpoint, {
