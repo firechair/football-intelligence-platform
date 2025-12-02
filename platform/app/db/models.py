@@ -313,3 +313,17 @@ class FixtureTrackingStatus(Base):
     collection_attempts = Column(Integer, default=0)
     last_error = Column(Text, nullable=True)
     error_count = Column(Integer, default=0)
+    
+    # Match info for live queries
+    tracking_status = Column(String(50), nullable=True, index=True)
+    league_name = Column(String(255), nullable=True)
+    home_team = Column(String(255), nullable=True)
+    away_team = Column(String(255), nullable=True)
+    fixture_date = Column(DateTime, nullable=True, index=True)
+    home_team_logo = Column(String(500), nullable=True)
+    away_team_logo = Column(String(500), nullable=True)
+    league_logo = Column(String(500), nullable=True)
+    
+    __table_args__ = (
+        Index('ix_fixture_tracking_status_live', 'tracking_status', 'fixture_date'),
+    )
