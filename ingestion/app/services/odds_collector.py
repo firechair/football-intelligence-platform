@@ -676,8 +676,16 @@ class OddsCollector:
                     db.add(odds_record)
                     saved_count += 1
 
-                # Aggiorna tracking status
-                await self._update_fixture_tracking(fixture_id, db)
+                # Update tracking status to "live" for active matches
+                fixture_tracking = db.query(FixtureTrackingStatus).filter(
+                    FixtureTrackingStatus.fixture_id == fixture_id
+                ).first()
+                if fixture_tracking:
+                    fixture_tracking.tracking_status = "live"
+                    fixture_tracking.updated_at = datetime.now()
+                    logger.info(f"Updated tracking_status to 'live' for fixture {fixture_id}")
+                
+                db.commit()
 
         except Exception as e:
             logger.error(f"Error processing live 1X2 bet: {str(e)}")

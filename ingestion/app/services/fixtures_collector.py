@@ -194,6 +194,27 @@ class FixturesCollector:
                         continue
 
             logger.info(f"Filtered to {len(truly_live_fixtures)} truly live fixtures")
+            
+            # Update tracking_status in database for live fixtures
+            if truly_live_fixtures:
+                try:
+                    from app.core.database import get_db
+                    db = next(get_db())
+                    for fixture in truly_live_fixtures:
+                        fixture_id = fixture.get('fixture', {}).get('id')
+                        if fixture_id:
+                            tracking = db.query(FixtureTrackingStatus).filter(
+                                FixtureTrackingStatus.fixture_id == fixture_id
+                            ).first()
+                            if tracking and tracking.tracking_status != "live":
+                                tracking.tracking_status = "live"
+                                tracking.updated_at = datetime.now()
+                                logger.info(f"Updated tracking_status to 'live' for fixture {fixture_id}")
+                    db.commit()
+                    logger.info(f"Updated tracking_status for {len(truly_live_fixtures)} live fixtures")
+                except Exception as e:
+                    logger.error(f"Error updating tracking_status for live fixtures: {str(e)}")
+            
             return truly_live_fixtures
 
         except Exception as e:
