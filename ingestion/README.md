@@ -1,65 +1,89 @@
-# FIP Operator - Production Ready
+# FIP Operator
 
-## Overview
-FIP Operator is a FastAPI service that handles odds tracking, predictions collection, and fixtures management for the FIP platform. It's designed to run on Railway with PostgreSQL database.
+## 🚀 Project Overview
+**FIP Operator** is a high-performance, asynchronous microservice designed to power the FIP platform's data ingestion and processing layer. It serves as the intelligent backbone for collecting, analyzing, and serving real-time football data, odds, and predictions.
 
-## Production Configuration
+This service is engineered to handle complex data pipelines, ensuring that the frontend receives accurate, up-to-the-minute information while maintaining strict rate limits with external providers.
 
-### Environment Variables (Railway)
-```
-DATABASE_URL=postgresql://postgres:REDACTED@example.invalid:5432/railway
-FOOTBALL_API_KEY=REDACTED
+## 🛠️ Tech Stack & Methodologies
+
+### Core Technologies
+- **Language**: Python 3.10+
+- **Framework**: **FastAPI** (High-performance async web framework)
+- **Database**: **PostgreSQL** with **SQLAlchemy** (ORM) and **Alembic** (Migrations)
+- **Asynchronous Processing**: `asyncio` for non-blocking I/O operations
+- **HTTP Client**: `httpx` for efficient async API requests
+
+### Architecture & Patterns
+- **Microservices Architecture**: Designed as a specialized operator service decoupled from the main backend.
+- **Repository Pattern**: Clean separation of data access logic.
+- **Singleton Pattern**: Used for database connections and API clients to manage resources efficiently.
+- **Rate Limiting**: Custom implementation using `asyncio.Semaphore` to respect external API constraints (e.g., API-Football).
+- **Background Jobs**: Scheduled tasks for periodic data fetching (Odds, Fixtures, Predictions) without blocking the main event loop.
+
+### DevOps & Deployment
+- **Platform**: **Railway** (PaaS)
+- **CI/CD**: Git-based automated deployments
+- **Environment Management**: `python-dotenv` for secure configuration
+- **Containerization**: Docker-ready structure
+
+## 🔑 Key Features
+
+### 1. Intelligent Data Collection
+- **Smart Rate Limiting**: Sophisticated throttling mechanism to maximize data throughput within strict API limits (5 req/sec).
+- **Resilient Fetching**: Automatic retries and error handling for external API calls.
+- **Historical Data Analysis**: Capabilities to fetch and process historical match data for accuracy verification.
+
+### 2. Odds Tracking System
+- **Real-time Odds**: Fetches and stores live odds from multiple bookmakers.
+- **Odds History**: Tracks odds movement over time to identify value bets.
+- **Best Odds Calculation**: Automatically identifies the best available odds for specific markets.
+
+### 3. Prediction Accuracy Engine
+- **Automated Verification**: Systematically compares predictions against actual match results.
+- **Performance Metrics**: Calculates accuracy scores for different prediction types (Winner, Goals, etc.).
+- **Self-Correction**: Data-driven feedback loop to monitor prediction model performance.
+
+## 🔧 Configuration
+
+### Environment Variables
+The application requires the following environment variables (never commit these to version control):
+```bash
+DATABASE_URL=postgresql://user:password@host:port/dbname
+FOOTBALL_API_KEY=your_api_key_here
 LOG_LEVEL=INFO
 ENVIRONMENT=production
 ```
 
-### Service Configuration
-- **Port**: 8080 (Railway requirement)
-- **Database**: PostgreSQL (Railway shared instance)
-- **API Base**: `/api/v1`
-- **CORS**: Configured for production domains
-
-## API Endpoints
-
-### Core Endpoints
-- `GET /` - Health check
-- `GET /api/v1/fixtures/today` - Today's fixtures
-- `GET /api/v1/fixtures/range` - Fixtures by date range
-- `GET /api/v1/odds/best/{fixture_id}` - Best odds for fixture
-- `GET /api/v1/predictions/today` - Today's predictions
-- `GET /api/v1/assets/logo` - Logo proxy service
-
-### Admin Endpoints
-- `GET /api/v1/admin/status` - Service status
-- `POST /api/v1/admin/cleanup` - Manual cleanup
-- `GET /api/v1/admin/database-status` - Database status
-
-## Deployment
-
-### Railway Deployment
-1. Push to `firechair/ingestion` repository
-2. Railway auto-deploys from repository
-3. Environment variables are set in Railway dashboard
-4. Service runs on port 8080
-
 ### Local Development
-```bash
-cd ingestion
-python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8080
-```
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/firechair/ingestion.git
+   cd ingestion
+   ```
 
-## Database Schema
-- **Odds Tracking**: Historical odds data with bookmaker information
-- **Predictions**: Match predictions and analysis
-- **Fixtures**: Match information and tracking status
+2. **Install dependencies**
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   pip install -r requirements.txt
+   ```
 
-## Rate Limiting
-- **Odds Collection**: 2 requests/second
-- **Predictions**: 1 request every 2 seconds
-- **Total API Limit**: 4 requests/second (coordinated with main backend)
+3. **Run the service**
+   ```bash
+   cd ingestion
+   python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+   ```
 
-## Monitoring
-- Automatic odds collection every 4 hours
-- Daily fixtures sync every 2 hours
-- Predictions collection every 12 hours
-- Data cleanup every 24 hours
+## 📊 API Documentation
+Once running, full interactive documentation (Swagger UI) is available at:
+- **Local**: `http://localhost:8000/docs`
+- **Production**: `https://example.invalid/docs`
+
+## 🛡️ Security & Best Practices
+- **Sensitive Data Protection**: All API keys and database credentials are managed via environment variables.
+- **Input Validation**: Pydantic models ensure data integrity for all incoming requests.
+- **Error Handling**: Comprehensive global exception handling to prevent information leakage.
+
+---
+*Built with ❤️ for the FIP Platform*
