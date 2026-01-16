@@ -299,6 +299,78 @@ class ConversationMemoryService:
         
         return insights
 
+    def get_messages_for_parlant(self, session_id: str, limit: Optional[int] = 10) -> List[Dict[str, str]]:
+        """
+        Get messages in Parlant-compatible format
+
+        Converts in-memory messages to the format expected by Parlant AI Agent:
+        [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}]
+
+        Args:
+            session_id: Session identifier
+            limit: Maximum number of messages to return (default: 10)
+
+        Returns:
+            List of messages in Parlant format
+        """
+        messages = self.get_conversation_history(session_id, limit)
+
+        parlant_messages = []
+        for msg in messages:
+            parlant_messages.append({
+                "role": msg.role,
+                "content": msg.content
+            })
+
+        logger.debug(f"[MEMORY] Prepared {len(parlant_messages)} messages for Parlant from session {session_id}")
+        return parlant_messages
+
+    def sync_from_parlant_messages(self, session_id: str, parlant_messages: List[Dict[str, str]]):
+        """
+        Import Parlant messages into memory
+
+        Useful for syncing Parlant session history into in-memory storage
+        for fast access and unified context management.
+
+        Args:
+            session_id: Session identifier
+            parlant_messages: List of messages in Parlant format
+                             [{"role": "user", "content": "..."}]
+        """
+        if not parlant_messages:
+            logger.debug(f"[MEMORY] No Parlant messages to sync for session {session_id}")
+            return
+
+        with self._lock:
+            conversation = self.get_or_create_conversation(session_id)
+
+            # Get existing message contents to avoid duplicates
+            existing_contents = {(msg.role, msg.content) for msg in conversation.messages}
+
+            # Import new messages from Parlant
+            imported_count = 0
+            for parlant_msg in parlant_messages:
+                role = parlant_msg.get("role", "")
+                content = parlant_msg.get("content", "")
+
+                # Skip if message already exists (avoid duplicates)
+                if (role, content) in existing_contents:
+                    continue
+
+                # Create and add message
+                message = ChatMessage(
+                    role=role,
+                    content=content,
+                    timestamp=time.time(),
+                    message_metadata={"source": "parlant_sync"}
+                )
+                conversation.messages.append(message)
+                imported_count += 1
+
+            if imported_count > 0:
+                conversation.last_activity = time.time()
+                logger.info(f"[MEMORY] Synced {imported_count} messages from Parlant to session {session_id}")
+
 # Singleton instance
 _conversation_memory_service = None
 

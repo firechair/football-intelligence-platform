@@ -22,9 +22,20 @@ class SessionManager:
         self._cleanup_interval = 3600  # 1 ora
         self._last_cleanup = datetime.utcnow()
         self._lock = threading.Lock()
+        self._stop_event = threading.Event()
+        self._cleanup_thread = None
         
         # Avvia thread di cleanup in background
         self._start_cleanup_thread()
+        
+    def stop(self):
+        """Ferma il thread di cleanup"""
+        if self._cleanup_thread and self._cleanup_thread.is_alive():
+            logger.info("Stopping session cleanup thread...")
+            self._stop_event.set()
+            # Non facciamo join qui per evitare di bloccare se chiamato dal main thread
+            # Lasciamo che il daemon thread termini o che l'event lo faccia uscire
+            logger.info("Session cleanup thread stop signaled")
     
     def create_session(
         self,
@@ -387,10 +398,12 @@ class SessionManager:
     def _start_cleanup_thread(self):
         """Avvia thread di cleanup automatico in background"""
         def cleanup_worker():
-            while True:
+            logger.info("Session cleanup worker running")
+            while not self._stop_event.is_set():
                 try:
-                    # Sleep per intervallo di cleanup
-                    threading.Event().wait(self._cleanup_interval)
+                    # Sleep per intervallo di cleanup, interrompibile
+                    if self._stop_event.wait(self._cleanup_interval):
+                        break
                     
                     # Importa qui per evitare circular import
                     from app.db import get_db
@@ -408,10 +421,12 @@ class SessionManager:
                             
                 except Exception as e:
                     logger.error(f"Error in session cleanup thread: {e}")
+            
+            logger.info("Session cleanup worker stopped")
         
         # Avvia thread daemon
-        cleanup_thread = threading.Thread(target=cleanup_worker, daemon=True)
-        cleanup_thread.start()
+        self._cleanup_thread = threading.Thread(target=cleanup_worker, daemon=True)
+        self._cleanup_thread.start()
         logger.info("Session cleanup thread started")
 
 # Singleton instance

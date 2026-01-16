@@ -2,6 +2,7 @@ import os
 import httpx
 import asyncio
 import logging
+from typing import Dict, Any, Optional, List
 from fastapi import HTTPException, status
 
 # --- Configuration ---
@@ -12,13 +13,107 @@ DEFAULT_MODEL = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-chat-v3-0324:fr
 HTTP_REFERER = os.getenv("OPENROUTER_HTTP_REFERER", "https://example.invalid")
 X_TITLE = os.getenv("OPENROUTER_TITLE", "FIP")
 
-async def send_llm_message(messages, model: str = DEFAULT_MODEL, temperature=0.7, max_retries: int = 3):
+# OpenRouter Response API URL for advanced features
+OPENROUTER_RESPONSES_URL = "https://openrouter.ai/api/v1/responses"
+
+logger = logging.getLogger(__name__)
+
+
+class OpenRouterConfig:
     """
-    Sends messages to the OpenRouter LLM and returns the reply.
-    Includes improved error handling, timeout, and retry logic.
+    Advanced OpenRouter configuration with caching, session tracking, and reasoning
+
+    Based on OpenRouter Responses API documentation
+    """
+
+    def __init__(
+        self,
+        session_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        enable_caching: bool = True,
+        reasoning_effort: str = "medium",  # none, minimal, low, medium, high, xhigh
+        response_format: Optional[str] = None,  # text, json_object, json_schema
+        metadata: Optional[Dict[str, str]] = None
+    ):
+        self.session_id = session_id
+        self.user_id = user_id
+        self.enable_caching = enable_caching
+        self.reasoning_effort = reasoning_effort
+        self.response_format = response_format
+        self.metadata = metadata or {}
+        self.prompt_cache_key: Optional[str] = None
+        self.previous_response_id: Optional[str] = None
+
+    def to_payload_params(self) -> Dict[str, Any]:
+        """Convert config to OpenRouter API parameters"""
+        params = {}
+
+        # Session tracking for conversation grouping
+        if self.session_id:
+            params["session_id"] = self.session_id[:128]  # Max 128 chars
+
+        # User tracking for abuse prevention
+        if self.user_id:
+            params["user"] = self.user_id[:128]
+
+        # Metadata for observability
+        if self.metadata:
+            params["metadata"] = self.metadata
+
+        # Prompt caching for cost reduction
+        if self.enable_caching and self.prompt_cache_key:
+            params["prompt_cache_key"] = self.prompt_cache_key
+
+        # Previous response linking for context continuity
+        if self.previous_response_id:
+            params["previous_response_id"] = self.previous_response_id
+
+        # Reasoning configuration for better quality
+        if self.reasoning_effort and self.reasoning_effort != "none":
+            params["reasoning"] = {
+                "effort": self.reasoning_effort,
+                "enabled": True
+            }
+
+        # Response format control
+        if self.response_format:
+            if self.response_format == "json_object":
+                params["text"] = {
+                    "format": {"type": "json_object"}
+                }
+            elif self.response_format == "text":
+                params["text"] = {
+                    "format": {"type": "text"}
+                }
+
+        return params
+
+
+async def send_llm_message(
+    messages: List[Dict[str, str]],
+    model: str = DEFAULT_MODEL,
+    temperature: float = 0.7,
+    max_retries: int = 3,
+    config: Optional[OpenRouterConfig] = None
+):
+    """
+    Sends messages to the OpenRouter LLM and returns the reply with enhanced features.
+
+    Args:
+        messages: List of message dicts with 'role' and 'content'
+        model: Model to use (default from env)
+        temperature: Sampling temperature (0-1)
+        max_retries: Number of retry attempts
+        config: Optional OpenRouterConfig for advanced features
+
+    Features:
+        - Session tracking for conversation grouping
+        - Prompt caching for cost reduction
+        - Reasoning control for response quality
+        - Metadata tracking for observability
     """
     if not OPENROUTER_API_KEY:
-        logging.error("[OPENROUTER] Missing OPENROUTER_API_KEY environment variable")
+        logger.error("[OPENROUTER] Missing OPENROUTER_API_KEY environment variable")
         return "[OpenRouter API error] Missing OPENROUTER_API_KEY env var."
 
     headers = {
@@ -27,11 +122,26 @@ async def send_llm_message(messages, model: str = DEFAULT_MODEL, temperature=0.7
         "HTTP-Referer": HTTP_REFERER,
         "X-Title": X_TITLE,
     }
+
+    # Base payload
     payload = {
         "model": model,
         "messages": messages,
         "temperature": temperature
     }
+
+    # Add advanced OpenRouter features if config provided
+    if config:
+        advanced_params = config.to_payload_params()
+        payload.update(advanced_params)
+
+        # Log session tracking
+        if config.session_id:
+            logger.info(f"[OPENROUTER] Session ID: {config.session_id[:16]}...")
+        if config.enable_caching and config.prompt_cache_key:
+            logger.info(f"[OPENROUTER] Using prompt cache: {config.prompt_cache_key[:16]}...")
+        if config.reasoning_effort != "none":
+            logger.info(f"[OPENROUTER] Reasoning effort: {config.reasoning_effort}")
     
     for attempt in range(max_retries):
         try:
