@@ -24,7 +24,6 @@ class SmartAlertEngine:
         """Check all types of alerts"""
         try:
             await asyncio.gather(
-                self.check_value_bet_alerts(),
                 self.check_odds_movement_alerts(),
                 self.check_bookmaker_special_alerts(),
                 return_exceptions=True
@@ -32,60 +31,6 @@ class SmartAlertEngine:
         except Exception as e:
             logger.error(f"Error in alert checking: {e}")
     
-    async def check_value_bet_alerts(self):
-        """Detect and trigger value betting opportunities"""
-        try:
-            db = next(get_db())
-            
-            # Get all active value bet alerts
-            active_alerts = db.query(models.SmartAlerts).filter(
-                and_(
-                    models.SmartAlerts.alert_type == 'value_bet',
-                    models.SmartAlerts.is_active == True
-                )
-            ).all()
-            
-            for alert in active_alerts:
-                try:
-                    # Check if alert was triggered recently (avoid spam)
-                    if alert.last_triggered:
-                        time_diff = datetime.utcnow() - alert.last_triggered
-                        if time_diff < timedelta(hours=1):  # Minimum 1 hour between alerts
-                            continue
-                    
-                    criteria = alert.criteria
-                    user = db.query(models.User).filter(models.User.id == alert.user_id).first()
-                    
-                    if not user:
-                        continue
-                    
-                    # Detect value opportunities
-                    value_bets = await self._detect_value_opportunities(
-                        sports=criteria.get('sports', ['football']),
-                        min_value_threshold=criteria.get('min_ev', 5.0),
-                        max_odds=criteria.get('max_odds', 10.0),
-                        user_id=alert.user_id
-                    )
-                    
-                    if value_bets:
-                        await self._send_alert(alert.user_id, 'value_bet', {
-                            'alert_id': alert.id,
-                            'opportunities': value_bets,
-                            'message': f"Found {len(value_bets)} value betting opportunities!",
-                            'priority': 'high' if len(value_bets) > 3 else 'medium'
-                        })
-                        
-                        # Update last triggered
-                        alert.last_triggered = datetime.utcnow()
-                        
-                except Exception as e:
-                    logger.error(f"Error processing value bet alert {alert.id}: {e}")
-            
-            db.commit()
-            db.close()
-            
-        except Exception as e:
-            logger.error(f"Error checking value bet alerts: {e}")
     
     async def check_odds_movement_alerts(self):
         """Monitor significant odds movements"""
@@ -279,36 +224,6 @@ class SmartAlertEngine:
             logger.error(f"Error toggling alert: {e}")
             return False
     
-    async def _detect_value_opportunities(self, sports: List[str], min_value_threshold: float, max_odds: float, user_id: int) -> List[Dict[str, Any]]:
-        """Detect value betting opportunities"""
-        try:
-            opportunities = []
-            
-            # Get user preferences for better targeting
-            user_prefs = await self._get_user_preferences(user_id)
-            preferred_markets = user_prefs.get('preferred_markets', ['1X2', 'Over/Under'])
-            
-            # This is a simplified implementation - in real scenario, you'd:
-            # 1. Compare current odds with historical averages
-            # 2. Use mathematical models to calculate expected value
-            # 3. Consider bookmaker margins and market efficiency
-            
-            # TODO: Implement real value betting opportunity detection
-            # For now, return empty opportunities to avoid showing fake data
-            # In real implementation, this would:
-            # 1. Compare current odds with historical averages
-            # 2. Use mathematical models to calculate expected value
-            # 3. Consider bookmaker margins and market efficiency
-            # 4. Filter based on user criteria and preferences
-            
-            # Return empty list until real implementation is ready
-            opportunities = []
-            
-            return opportunities
-            
-        except Exception as e:
-            logger.error(f"Error detecting value opportunities: {e}")
-            return []
     
     async def _detect_odds_movements(self, min_change_threshold: float, time_window: str) -> List[Dict[str, Any]]:
         """Detect significant odds movements"""
@@ -458,15 +373,13 @@ class SmartAlertEngine:
     
     def _validate_alert_criteria(self, alert_type: str, criteria: Dict[str, Any]) -> bool:
         """Validate alert criteria"""
-        valid_types = ['value_bet', 'odds_movement', 'bookmaker_special']
+        valid_types = ['odds_movement', 'bookmaker_special']
         
         if alert_type not in valid_types:
             return False
         
         # Basic validation - can be extended
-        if alert_type == 'value_bet':
-            return 'min_ev' in criteria
-        elif alert_type == 'odds_movement':
+        if alert_type == 'odds_movement':
             return 'min_change_pct' in criteria
         elif alert_type == 'bookmaker_special':
             return 'bookmakers' in criteria or 'sports' in criteria

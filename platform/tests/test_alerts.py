@@ -78,3 +78,9 @@ async def test_rankings_from_stats(services_use_test_db):
     by_name = {row["bookmaker"]: row for row in rankings}
     assert by_name["Bookmaker A"]["win_rate"] > by_name["Bookmaker B"]["win_rate"]
     assert rankings[0]["bookmaker"] == "Bookmaker A"
+
+
+def test_value_bet_alerts_are_not_offered():
+    # Detection was never implemented: the stub always returned an empty list.
+    assert not hasattr(alert_module.alert_engine, "check_value_bet_alerts")
+    assert alert_module.alert_engine._validate_alert_criteria("value_bet", {"min_ev": 0.1}) is False
