@@ -84,3 +84,10 @@ def test_value_bet_alerts_are_not_offered():
     # Detection was never implemented: the stub always returned an empty list.
     assert not hasattr(alert_module.alert_engine, "check_value_bet_alerts")
     assert alert_module.alert_engine._validate_alert_criteria("value_bet", {"min_ev": 0.1}) is False
+
+
+async def test_bookmaker_specials_do_not_invent_alerts(services_use_test_db):
+    specials = await alert_module.alert_engine._detect_bookmaker_specials(
+        ["Bookmaker A", "Bookmaker B"], ["football"], user_id=1
+    )
+    assert specials == []

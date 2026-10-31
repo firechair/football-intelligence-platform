@@ -300,19 +300,7 @@ class SmartAlertEngine:
                         'details': trend_data.get('insights', []),
                         'recommendation': 'Consider checking their current offers'
                     })
-                
-                # Check if bookmaker has new best odds
-                # This would require real-time odds comparison
-                # For now, add sample data
-                if bookmaker in ['Bookmaker A', 'Bookmaker B']:
-                    opportunities.append({
-                        'type': 'new_best_odds',
-                        'bookmaker': bookmaker,
-                        'message': f"{bookmaker} now offers the best odds on popular markets",
-                        'markets_count': 5,
-                        'recommendation': 'Check their latest offerings'
-                    })
-            
+
             return opportunities
             
         except Exception as e:
