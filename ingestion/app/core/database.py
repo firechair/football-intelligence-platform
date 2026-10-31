@@ -1,12 +1,14 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from typing import Iterator
+
+from sqlalchemy import Engine, create_engine
+from sqlalchemy.orm import Session, sessionmaker
 from app.core.config import settings
 
 # Engine globale - sarà inizializzato dinamicamente
 engine = None
 SessionLocal = None
 
-def init_database():
+def init_database() -> Engine:
     """Inizializza l'engine del database con l'URL corrente - Railway optimized"""
     global engine, SessionLocal
 
@@ -37,7 +39,7 @@ def init_database():
 # RIMOSSO: Inizializzazione globale che causava timeout su Railway
 # init_database()  # Non chiamare automaticamente
 
-def get_db():
+def get_db() -> Iterator[Session]:
     db = SessionLocal()
     try:
         yield db

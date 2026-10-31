@@ -167,7 +167,7 @@ async def health():
         "timestamp": datetime.now().isoformat()
     }
 
-async def db_test_endpoint():
+async def db_test_endpoint() -> dict:
     """Database connectivity test - create schema if missing. Internal, no longer a route."""
     global db_initialized, db_error_message
 

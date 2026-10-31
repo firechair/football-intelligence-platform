@@ -477,7 +477,7 @@ Posso aiutarti con analisi e informazioni, ma la decisione finale è sempre tua!
 
         return recommendations
 
-    async def reset_user_risk_score(self, user_id: str, reason: str):
+    async def reset_user_risk_score(self, user_id: str, reason: str) -> None:
         """
         Reset user's risk score (e.g., after successful self-exclusion period).
 

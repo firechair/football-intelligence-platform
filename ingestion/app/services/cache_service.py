@@ -6,7 +6,7 @@ Ottimizza le risposte delle API riducendo query al database
 import redis
 import json
 import logging
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 import os
 
 logger = logging.getLogger(__name__)
@@ -63,7 +63,7 @@ class CacheService:
             logger.error(f"Error getting cache key {key}: {str(e)}")
             return None
     
-    def set(self, key: str, value: Any, ttl_seconds: int = 300):
+    def set(self, key: str, value: Any, ttl_seconds: int = 300) -> bool:
         """Salva valore in cache con TTL (default 5 minuti)"""
         try:
             if self.use_redis and self.redis_client:
@@ -90,7 +90,7 @@ class CacheService:
             logger.error(f"Error setting cache key {key}: {str(e)}")
             return False
     
-    def delete(self, key: str):
+    def delete(self, key: str) -> bool:
         """Elimina valore dalla cache"""
         try:
             if self.use_redis and self.redis_client:
@@ -106,7 +106,7 @@ class CacheService:
             logger.error(f"Error deleting cache key {key}: {str(e)}")
             return False
     
-    def clear_pattern(self, pattern: str):
+    def clear_pattern(self, pattern: str) -> bool:
         """Elimina tutte le chiavi che matchano il pattern (solo Redis)"""
         try:
             if self.use_redis and self.redis_client:
@@ -127,7 +127,7 @@ class CacheService:
             logger.error(f"Error clearing cache pattern {pattern}: {str(e)}")
             return False
     
-    def get_stats(self):
+    def get_stats(self) -> Dict[str, Any]:
         """Ottieni statistiche cache"""
         try:
             if self.use_redis and self.redis_client:

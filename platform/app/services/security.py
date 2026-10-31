@@ -122,7 +122,7 @@ class SecurityService:
         
         return False
     
-    def record_attempt(self, key: str):
+    def record_attempt(self, key: str) -> None:
         """Registra tentativo per rate limiting"""
         now = datetime.now()
         if key not in self.rate_limit_storage:
@@ -130,7 +130,7 @@ class SecurityService:
         
         self.rate_limit_storage[key]['attempts'].append(now)
     
-    def blacklist_token(self, token: str):
+    def blacklist_token(self, token: str) -> None:
         """Aggiunge token alla blacklist"""
         token_hash = self.hash_token(token)
         self.blocked_tokens.add(token_hash)

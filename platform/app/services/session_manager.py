@@ -26,7 +26,7 @@ class SessionManager:
         # Avvia thread di cleanup in background
         self._start_cleanup_thread()
         
-    def stop(self):
+    def stop(self) -> None:
         """Ferma il thread di cleanup"""
         if self._cleanup_thread and self._cleanup_thread.is_alive():
             logger.info("Stopping session cleanup thread...")
@@ -395,7 +395,7 @@ class SessionManager:
     
     def _start_cleanup_thread(self):
         """Avvia thread di cleanup automatico in background"""
-        def cleanup_worker():
+        def cleanup_worker() -> None:
             logger.info("Session cleanup worker running")
             while not self._stop_event.is_set():
                 try:

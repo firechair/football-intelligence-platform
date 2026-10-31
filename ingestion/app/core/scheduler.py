@@ -20,7 +20,7 @@ class OddsTrackingScheduler:
         self.last_fixtures_date = None
         self.last_predictions_date = None
     
-    async def start(self):
+    async def start(self) -> None:
         """🚀 PRODUCTION SCHEDULER: Continuous execution with proper timing intervals"""
         if self.running:
             logger.warning("Scheduler already running")
@@ -115,7 +115,7 @@ class OddsTrackingScheduler:
             await self._process_results_check()
             self.last_results_check = current_time
 
-    async def run_daily_collection(self):
+    async def run_daily_collection(self) -> None:
         """🎯 MANUAL DAILY COLLECTION - Can be called by cron jobs"""
         logger.info("📅 Running manual daily collection cycle...")
 
@@ -132,7 +132,7 @@ class OddsTrackingScheduler:
             logger.error(f"Daily collection error: {str(e)}")
             raise
 
-    async def run_weekly_collection(self):
+    async def run_weekly_collection(self) -> None:
         """📆 MANUAL WEEKLY COLLECTION - Can be called by cron jobs"""
         logger.info("📆 Running manual weekly collection cycle...")
 
@@ -148,7 +148,7 @@ class OddsTrackingScheduler:
             logger.error(f"Weekly collection error: {str(e)}")
             raise
     
-    async def stop(self):
+    async def stop(self) -> None:
         """Ferma il scheduler"""
         logger.info("Stopping odds tracking scheduler")
         self.running = False
@@ -320,7 +320,7 @@ class LiveOddsMonitor:
         self.max_live_fixtures_per_cycle = 10  # Max 10 partite live per ciclo
         self.rate_limit_semaphore = asyncio.Semaphore(2)  # Max 2 chiamate API simultanee
 
-    async def start(self):
+    async def start(self) -> None:
         """🚀 Avvia monitoraggio continuo delle quote live"""
         if self.running:
             logger.warning("🔴 LiveOddsMonitor already running")
@@ -345,7 +345,7 @@ class LiveOddsMonitor:
         finally:
             self.running = False
 
-    async def stop(self):
+    async def stop(self) -> None:
         """🛑 Ferma monitoraggio live"""
         logger.info("🔴 🛑 Stopping LIVE ODDS MONITOR")
         self.running = False

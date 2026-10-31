@@ -418,7 +418,7 @@ class FootballAPIMapper:
                 # Pulisci i nomi delle squadre da parole comuni
                 stop_words = ['il', 'la', 'del', 'della', 'di', 'da', 'con', 'per', 'su', 'in', 'a', 'the', 'of', 'and', 'or']
                 
-                def clean_team_name(name):
+                def clean_team_name(name) -> str:
                     # Rimuovi informazioni sulla lega
                     name = re.sub(r'\s+(?:in|della|di)\s+(?:serie\s+a|champions\s+league|europa\s+league|coppa\s+italia).*$', '', name, flags=re.IGNORECASE)
                     

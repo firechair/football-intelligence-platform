@@ -32,7 +32,7 @@ class FixturesCollector:
         
         return upcoming_fixtures
     
-    async def update_tracking_status(self, fixtures: List[Dict[str, Any]], db: Session):
+    async def update_tracking_status(self, fixtures: List[Dict[str, Any]], db: Session) -> None:
         """Aggiorna lo stato di tracking per le partite"""
         for fixture in fixtures:
             fixture_data = fixture.get("fixture", {})

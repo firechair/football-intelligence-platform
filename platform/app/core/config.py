@@ -6,7 +6,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 # --- Database Configuration ---
 # Support both local SQLite and Railway PostgreSQL
-def get_database_url():
+def get_database_url() -> str:
     # Production: Railway PostgreSQL
     if os.getenv("DATABASE_URL"):
         return os.getenv("DATABASE_URL")

@@ -23,13 +23,13 @@ REFRESH_TOKEN_EXPIRE_DAYS = 7
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=12)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/users/login")
 
-def verify_password(plain_password, hashed_password):
+def verify_password(plain_password, hashed_password) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
-def get_password_hash(password):
+def get_password_hash(password) -> str:
     return pwd_context.hash(password)
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     to_encode.update({
@@ -131,7 +131,7 @@ def create_token_pair(user_id: int, request: Request = None, db: Session = None)
     
     return result
 
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db), request: Request = None):
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db), request: Request = None) -> models.User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -270,7 +270,7 @@ def authenticate_user(db: Session, username: str, password: str, request: Reques
     
     return UserResponse(user_data)
 
-def logout_user(token: str, db: Session = None, session_id: str = None, user_id: int = None, logout_all: bool = False):
+def logout_user(token: str, db: Session = None, session_id: str = None, user_id: int = None, logout_all: bool = False) -> None:
     """Logout utente aggiungendo token alla blacklist e terminando sessioni"""
     # Blacklist the token
     security_service.blacklist_token(token)

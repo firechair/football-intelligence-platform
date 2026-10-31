@@ -62,7 +62,7 @@ class ConversationMemoryService:
     
     def _start_cleanup_task(self):
         """Avvia il task di cleanup automatico delle conversazioni scadute"""
-        def cleanup_expired():
+        def cleanup_expired() -> None:
             while True:
                 try:
                     time.sleep(self.CLEANUP_INTERVAL)
@@ -100,7 +100,7 @@ class ConversationMemoryService:
                 logger.info(f"[MEMORY] Created new conversation for {session_id}")
                 return conversation
     
-    def add_message(self, session_id: str, role: str, content: str, message_metadata: Optional[Dict[str, Any]] = None):
+    def add_message(self, session_id: str, role: str, content: str, message_metadata: Optional[Dict[str, Any]] = None) -> None:
         """Aggiunge un messaggio alla conversazione"""
         with self._lock:
             conversation = self.get_or_create_conversation(session_id)
@@ -150,7 +150,7 @@ class ConversationMemoryService:
         
         return "\n".join(context_parts)
     
-    def update_conversation_entities(self, session_id: str, entities: Dict[str, Any]):
+    def update_conversation_entities(self, session_id: str, entities: Dict[str, Any]) -> None:
         """Aggiorna le entità estratte nella conversazione"""
         with self._lock:
             conversation = self.get_or_create_conversation(session_id)
@@ -173,7 +173,7 @@ class ConversationMemoryService:
             conversation.last_activity = time.time()
             logger.debug(f"[MEMORY] Updated entities for {session_id}: {entities}")
     
-    def add_conversation_topic(self, session_id: str, topic: str):
+    def add_conversation_topic(self, session_id: str, topic: str) -> None:
         """Aggiunge un argomento alla conversazione"""
         with self._lock:
             conversation = self.get_or_create_conversation(session_id)
@@ -224,7 +224,7 @@ class ConversationMemoryService:
                 return True
             return False
     
-    def cleanup_expired_conversations(self):
+    def cleanup_expired_conversations(self) -> None:
         """Rimuove conversazioni scadute"""
         current_time = time.time()
         expired_sessions = []
@@ -323,7 +323,7 @@ class ConversationMemoryService:
         logger.debug(f"[MEMORY] Prepared {len(parlant_messages)} messages for Parlant from session {session_id}")
         return parlant_messages
 
-    def sync_from_parlant_messages(self, session_id: str, parlant_messages: List[Dict[str, str]]):
+    def sync_from_parlant_messages(self, session_id: str, parlant_messages: List[Dict[str, str]]) -> None:
         """
         Import Parlant messages into memory
 

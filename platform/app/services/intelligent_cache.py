@@ -33,7 +33,7 @@ class IntelligentOddsCache:
             'top_bookmakers': 'top_bm:{sport}:{period}'
         }
     
-    async def update_best_odds(self, fixture_id: int, market: str, odds_data: dict):
+    async def update_best_odds(self, fixture_id: int, market: str, odds_data: dict) -> None:
         """Update best odds with automatic invalidation and analytics tracking"""
         if not self.redis:
             return
@@ -245,7 +245,7 @@ class IntelligentOddsCache:
         }
         return timeframe_map.get(timeframe, 30)
     
-    async def invalidate_cache(self, pattern: str):
+    async def invalidate_cache(self, pattern: str) -> None:
         """Invalidate cache entries matching pattern"""
         if not self.redis:
             return

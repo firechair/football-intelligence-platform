@@ -19,7 +19,7 @@ class SmartAlertEngine:
         self.cache = intelligent_cache
         self.analytics = bookmaker_analytics
         
-    async def check_all_alerts(self):
+    async def check_all_alerts(self) -> None:
         """Check all types of alerts"""
         try:
             await asyncio.gather(
@@ -31,7 +31,7 @@ class SmartAlertEngine:
             logger.error(f"Error in alert checking: {e}")
     
     
-    async def check_odds_movement_alerts(self):
+    async def check_odds_movement_alerts(self) -> None:
         """Monitor significant odds movements"""
         try:
             db = next(get_db())
@@ -83,7 +83,7 @@ class SmartAlertEngine:
         except Exception as e:
             logger.error(f"Error checking odds movement alerts: {e}")
     
-    async def check_bookmaker_special_alerts(self):
+    async def check_bookmaker_special_alerts(self) -> None:
         """Check for special bookmaker opportunities (trends, new best odds, etc.)"""
         try:
             db = next(get_db())

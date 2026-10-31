@@ -29,7 +29,7 @@ class APIStats:
         self.hourly_requests = []  # list of (timestamp, endpoint)
         self.daily_requests = []  # list of (timestamp, endpoint)
     
-    def record_request(self, endpoint: str, success: bool, response_time: float, error_code: int = None):
+    def record_request(self, endpoint: str, success: bool, response_time: float, error_code: int = None) -> None:
         """Record an API request"""
         self.total_requests += 1
         self.last_request_time = datetime.now()

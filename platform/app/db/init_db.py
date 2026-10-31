@@ -1,7 +1,7 @@
 from .models import Base
 from .session import engine
 
-def init_db():
+def init_db() -> None:
     Base.metadata.create_all(bind=engine)
 
 if __name__ == "__main__":

@@ -57,7 +57,7 @@ class OddsCollector:
             "Both Teams Not To Score": "NoGoal",
         }
     
-    def extract_best_1x2_odds_from_any_structure(self, odds_container):
+    def extract_best_1x2_odds_from_any_structure(self, odds_container) -> tuple:
         """
         Extract best odds for 1, X, 2, 1X, X2, 12, O2.5, U2.5 from either the new FootballAPI structure (odds at root) or the old (bookmakers array).
         Returns (best_odds, all_odds) as before.
@@ -533,7 +533,7 @@ class OddsCollector:
         # Usa rate limiting esterno se fornito (dal LiveOddsMonitor), altrimenti default
         semaphore = rate_limit_semaphore if rate_limit_semaphore else asyncio.Semaphore(2)
 
-        async def collect_single_fixture_odds(fixture_id: int):
+        async def collect_single_fixture_odds(fixture_id: int) -> int:
             async with semaphore:
                 try:
                     # Chiamata diretta all'endpoint /odds/live per questo fixture

@@ -94,7 +94,7 @@ async def send_llm_message(
     temperature: float = 0.7,
     max_retries: int = 3,
     config: Optional[OpenRouterConfig] = None
-):
+) -> str:
     """
     Sends messages to the OpenRouter LLM and returns the reply with enhanced features.
 
