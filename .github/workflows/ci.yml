@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  ingestion:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: demo
+          POSTGRES_PASSWORD: demo-only
+          POSTGRES_DB: ingestion
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U demo -d ingestion"
+          --health-interval 2s --health-timeout 3s --health-retries 30
+    defaults:
+      run:
+        working-directory: ingestion
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      - run: pip install -r ../demo/requirements.txt
+      - run: pytest -q
+      - name: Start the mock football API
+        working-directory: demo
+        run: nohup uvicorn mock_football_api.app:create_app --factory --port 8080 > mock.log 2>&1 &
+      - name: Integration tests
+        env:
+          DATABASE_URL: postgresql://demo:demo-only@localhost:5432/ingestion
+          FOOTBALL_API_KEY: demo
+          FOOTBALL_API_BASE_URL: http://localhost:8080
+        run: |
+          alembic upgrade head
+          pytest -m integration -q
+
+  platform:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: platform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: pytest -q --no-cov
+
+  demo:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: demo
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      - run: pytest -q
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci
+      - run: npx vitest run
+      - run: npx tsc --noEmit
+      - run: npm run build
+
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose up -d --build --wait
+      - run: curl -fsS localhost:8001/health && curl -fsS localhost:8000/health
+      - run: docker compose run --rm ingestion python scripts/collect_once.py --simulate-results
+      - run: curl -fsS "localhost:3000/api/football/accuracy/summary?days_back=30" | grep -q '"total_predictions":10'
+      - run: docker compose run --rm platform python scripts/ask_agent.py "What are the odds for Inter vs Milan?"
+      - if: always()
+        run: docker compose logs --no-color --tail 50
+      - if: always()
+        run: docker compose down -v
