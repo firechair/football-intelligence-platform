@@ -86,25 +86,7 @@ class FixturesCollector:
                     'tracking_status': "pending",
                 }
 
-                # Aggiungi country_name solo se la colonna esiste nel database
-                try:
-                    # Prova a creare un record di test per vedere se la colonna esiste
-                    test_record = FixtureTrackingStatus(
-                        fixture_id=999999999,  # ID fittizio per test
-                        league_id=1,
-                        league_name="Test",
-                        country_name="Test",  # Prova ad impostare country_name
-                        home_team="Test",
-                        away_team="Test",
-                        fixture_date=datetime.now()
-                    )
-                    # Se arriva qui senza errori, la colonna esiste
-                    tracking_data['country_name'] = league_data.get("country")
-                    logger.debug(f"✅ Column country_name exists in database")
-                except Exception as e:
-                    # La colonna non esiste, non impostarla
-                    logger.warning(f"⚠️ Column country_name does not exist in database: {str(e)}")
-                    # Non aggiungere country_name ai dati
+                tracking_data['country_name'] = league_data.get("country")
 
                 new_tracking = FixtureTrackingStatus(**tracking_data)
                 db.add(new_tracking)
@@ -187,7 +169,7 @@ class FixturesCollector:
                             truly_live_fixtures.append(fixture)
                             logger.info(f"Live fixture: {fixture.get('teams', {}).get('home', {}).get('name')} vs {fixture.get('teams', {}).get('away', {}).get('name')} - {status.get('long')} ({time_since_start:.0f} min ago)")
 
-                    except ValueError as e:
+                    except ValueError:
                         logger.warning(f"Invalid date format for live fixture: {fixture_date_str}")
                         continue
 

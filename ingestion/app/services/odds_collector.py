@@ -351,7 +351,6 @@ class OddsCollector:
         logger.info(f"Processing fixture {fixture_id}: {bookmakers_count} bookmakers found")
         
         # Calcola minuti al calcio d'inizio
-        minutes_to_kickoff = self._calculate_minutes_to_kickoff(fixture_info.fixture_date)
         
         # Usa la funzione avanzata di estrazione delle quote dal backend
         logger.info(f"📊 Extracting odds from data structure for fixture {fixture_id}")
@@ -488,16 +487,6 @@ class OddsCollector:
             FixtureTrackingStatus.fixture_id == fixture_id
         ).first()
     
-    def _calculate_minutes_to_kickoff(self, fixture_date: datetime) -> int:
-        """Calcola minuti rimanenti al calcio d'inizio"""
-        now = datetime.now()
-        if fixture_date.tzinfo is None:
-            fixture_date = fixture_date.replace(tzinfo=datetime.now().astimezone().tzinfo)
-        if now.tzinfo is None:
-            now = now.replace(tzinfo=datetime.now().astimezone().tzinfo)
-        
-        delta = fixture_date - now
-        return max(0, int(delta.total_seconds() / 60))
     
     async def _ensure_bookmaker_exists(self, api_id: int, name: str, db: Session):
         """Assicura che il bookmaker esista nel database"""
@@ -595,11 +584,6 @@ class OddsCollector:
         saved_count = 0
 
         try:
-            # Estrai informazioni base
-            fixture_info = fixture_odds.get("fixture", {})
-            league_info = fixture_odds.get("league", {})
-            teams_info = fixture_odds.get("teams", {})
-
             # I bookmaker per questo fixture live
             bookmakers = fixture_odds.get("bookmakers", [])
 

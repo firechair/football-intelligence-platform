@@ -161,9 +161,6 @@ class OddsTrackingScheduler:
     
     async def _collect_daily_fixtures(self):
         """Helper: Raccogli fixtures giornaliere"""
-        from datetime import date
-        today = date.today()
-        
         db = next(get_db())
         try:
             # Raccolta fixtures giornaliere (oggi + domani)

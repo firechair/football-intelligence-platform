@@ -119,7 +119,7 @@ class ConversationMemoryService:
             
             # Limita il numero di messaggi (FIFO)
             if len(conversation.messages) > self.MAX_MESSAGES_PER_CONVERSATION:
-                removed = conversation.messages.pop(0)
+                conversation.messages.pop(0)
                 logger.debug(f"[MEMORY] Removed oldest message from {session_id}")
             
             logger.debug(f"[MEMORY] Added {role} message to {session_id} (total: {len(conversation.messages)})")
