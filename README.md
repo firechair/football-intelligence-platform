@@ -53,7 +53,7 @@ To use a real LLM, copy `.env.example` to `.env` and fill it in.
 ```bash
 cd ingestion && pytest -q                                      # 24 tests
 docker compose run --rm ingestion pytest -m integration -q     # 3 tests against Postgres and the mock API
-cd platform && pytest -q --no-cov                              # 133 tests
+cd platform && pytest -q --no-cov                              # 145 tests
 cd demo && pytest -q                                           # 15 tests
 cd web && npx vitest run                                       # 11 tests
 ```
@@ -101,7 +101,7 @@ Making the code run from a clean clone, with tests, exposed bugs that the origin
 - **The compliance filter made harmful replies worse**, and a message about suicide received only gambling numbers.
 - **Concurrent API requests started in bursts**, past the provider's limit.
 
-The 81 account tests inherited from the project had also gone stale: 32 of them failed or errored on the first run. Their expectations now state what the code does on purpose, and the other 52 platform tests are new.
+The 81 account tests inherited from the project had also gone stale: 32 of them failed or errored on the first run. Their expectations now state what the code does on purpose, and the other 64 platform tests are new.
 
 ## Evolution
 
