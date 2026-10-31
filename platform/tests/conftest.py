@@ -4,6 +4,9 @@ Test configuration and fixtures
 import pytest
 import tempfile
 import os
+
+os.environ.setdefault("SECRET_KEY", "test-secret-key")
+os.environ.setdefault("REFRESH_SECRET_KEY", "test-refresh-secret-key")
 from typing import Generator
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -35,6 +38,15 @@ def test_db():
     # Cleanup
     os.close(db_fd)
     os.unlink(db_path)
+
+
+@pytest.fixture(autouse=True)
+def clean_tables(test_db):
+    """The database is shared by the whole session, so every test starts from empty tables."""
+    _, engine = test_db
+    yield
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
 
 
 @pytest.fixture

@@ -5,7 +5,7 @@ from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
-from app.db import session as db_session, models
+from app.db import get_db, models
 from app.services.security import security_service
 from app.services.session_manager import session_manager
 import os
@@ -130,13 +130,6 @@ def create_token_pair(user_id: int, request: Request = None, db: Session = None)
         result["session_id"] = session_id
     
     return result
-
-def get_db():
-    db = db_session.SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db), request: Request = None):
     credentials_exception = HTTPException(

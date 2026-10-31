@@ -32,14 +32,9 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/users", tags=["users"])
+from app.db import get_db
 
-def get_db():
-    db = db_session.SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+router = APIRouter(prefix="/users", tags=["users"])
 
 @router.post("/register")
 def register_user(user: UserCreate, request: Request, db: Session = Depends(get_db)):
