@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 _global_rate_limiter = asyncio.Semaphore(5)  # Massimo 5 chiamate simultanee
 _last_request_time = 0
 _request_spacing = 1.0  # 1 secondo tra richieste (1 req/sec per processo)
+_spacing_lock = asyncio.Lock()  # Lettura, attesa e aggiornamento dell'ultima richiesta devono essere atomici
 
 # 📊 API Statistics Tracker
 class APIStats:
@@ -106,12 +107,13 @@ class FootballAPIClient:
         
         async with _global_rate_limiter:
             # Rate limiting globale: utilizza spacing globale
-            current_time = time.time()
-            time_since_last = current_time - _last_request_time
-            if time_since_last < _request_spacing:
-                await asyncio.sleep(_request_spacing - time_since_last)
-            
-            _last_request_time = time.time()
+            async with _spacing_lock:
+                current_time = time.time()
+                time_since_last = current_time - _last_request_time
+                if time_since_last < _request_spacing:
+                    await asyncio.sleep(_request_spacing - time_since_last)
+
+                _last_request_time = time.time()
             
             url = f"{self.base_url}/{endpoint}"
             
@@ -221,12 +223,13 @@ class FootballAPIClient:
         
         async with _global_rate_limiter:
             # Rate limiting globale: utilizza spacing globale
-            current_time = time.time()
-            time_since_last = current_time - _last_request_time
-            if time_since_last < _request_spacing:
-                await asyncio.sleep(_request_spacing - time_since_last)
-            
-            _last_request_time = time.time()
+            async with _spacing_lock:
+                current_time = time.time()
+                time_since_last = current_time - _last_request_time
+                if time_since_last < _request_spacing:
+                    await asyncio.sleep(_request_spacing - time_since_last)
+
+                _last_request_time = time.time()
             
             url = f"{self.base_url}/{endpoint}"
             
