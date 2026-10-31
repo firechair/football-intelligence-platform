@@ -1,3 +1,4 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
@@ -7,6 +8,8 @@ from pydantic import BaseModel
 
 from app.core.database import get_db
 from app.models.odds_tracking import ExtendedOddsHistory, BookmakerInfo, FixtureTrackingStatus
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/historical", tags=["historical"])
 
@@ -38,7 +41,7 @@ async def get_fixture_odds_history(
 ):
     """Recupera la cronologia delle quote per una partita specifica"""
     
-    print(f"[OPERATOR HISTORICAL] Request: fixture_id={fixture_id}, market={market}, bookmaker={bookmaker}, hours_back={hours_back}")
+    logger.info(f"[OPERATOR HISTORICAL] Request: fixture_id={fixture_id}, market={market}, bookmaker={bookmaker}, hours_back={hours_back}")
     
     cutoff_time = datetime.now() - timedelta(hours=hours_back)
     
@@ -48,18 +51,18 @@ async def get_fixture_odds_history(
     )
     
     if market:
-        print(f"[OPERATOR HISTORICAL] Filtering by market: {market}")
+        logger.info(f"[OPERATOR HISTORICAL] Filtering by market: {market}")
         query = query.filter(ExtendedOddsHistory.market_name == market)
     
     if bookmaker:
-        print(f"[OPERATOR HISTORICAL] Filtering by bookmaker: {bookmaker}")
+        logger.info(f"[OPERATOR HISTORICAL] Filtering by bookmaker: {bookmaker}")
         query = query.filter(ExtendedOddsHistory.bookmaker_name.ilike(f"%{bookmaker}%"))
     
     odds_history = query.order_by(desc(ExtendedOddsHistory.collected_at)).all()
     
-    print(f"[OPERATOR HISTORICAL] Found {len(odds_history)} records")
+    logger.info(f"[OPERATOR HISTORICAL] Found {len(odds_history)} records")
     if odds_history:
-        print(f"[OPERATOR HISTORICAL] Sample record: market={odds_history[0].market_name}, bookmaker={odds_history[0].bookmaker_name}, value={odds_history[0].odd_value}")
+        logger.info(f"[OPERATOR HISTORICAL] Sample record: market={odds_history[0].market_name}, bookmaker={odds_history[0].bookmaker_name}, value={odds_history[0].odd_value}")
     
     # Return data in the format expected by the frontend
     return {

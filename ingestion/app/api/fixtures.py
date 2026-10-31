@@ -173,7 +173,7 @@ async def get_fixtures_main(
         return fixtures_response
         
     except Exception as e:
-        print(f"Error in get_fixtures_main: {str(e)}")
+        logger.info(f"Error in get_fixtures_main: {str(e)}")
         return FixturesByDateResponse(
             date=date or datetime.now().date().isoformat(),
             total_matches=0,
@@ -221,10 +221,10 @@ async def get_fixtures_by_date_range(
     cache_key = f"fixtures_range_{start_date.isoformat()}_{end_date.isoformat()}_{league_id}_{important_only}"
     cached_response = cache_service.get(cache_key)
     if cached_response:
-        print(f"[OPERATOR] 🎯 Cache HIT for range {start_date} to {end_date} (important_only={important_only})")
+        logger.info(f"[OPERATOR] 🎯 Cache HIT for range {start_date} to {end_date} (important_only={important_only})")
         return FixturesByDateRangeResponse(**cached_response)
 
-    print(f"[OPERATOR] ❌ Cache MISS - Querying DB for range {start_date} to {end_date} (important_only={important_only})")
+    logger.info(f"[OPERATOR] ❌ Cache MISS - Querying DB for range {start_date} to {end_date} (important_only={important_only})")
 
     # Determina i campionati da includere
     important_league_ids = []
@@ -241,7 +241,7 @@ async def get_fixtures_by_date_range(
             2, 3, # Champions League, Europa League
             5, 960, 10  # Nations League, Euro Qualifiers, World Cup Qualifiers
         ]
-        print(f"[OPERATOR] Filtering for {len(important_league_ids)} important leagues")
+        logger.info(f"[OPERATOR] Filtering for {len(important_league_ids)} important leagues")
 
     # Raccogli partite per ogni giorno nel range (solo future)
     daily_fixtures = []
@@ -260,7 +260,7 @@ async def get_fixtures_by_date_range(
             total_matches += day_fixtures.total_matches
         current_date += timedelta(days=1)
     
-    print(f"[OPERATOR] Returning {total_matches} upcoming matches (past matches filtered out)")
+    logger.info(f"[OPERATOR] Returning {total_matches} upcoming matches (past matches filtered out)")
     
     response = FixturesByDateRangeResponse(
         start_date=start_date.isoformat(),
@@ -271,7 +271,7 @@ async def get_fixtures_by_date_range(
     
     # 🔴 CACHE: Salva in cache per 5 minuti (300 secondi)
     cache_service.set(cache_key, response.model_dump(), ttl_seconds=300)
-    print(f"[OPERATOR] 💾 Cached response for range {start_date} to {end_date}")
+    logger.info(f"[OPERATOR] 💾 Cached response for range {start_date} to {end_date}")
     
     return response
 
@@ -282,11 +282,11 @@ async def get_live_fixtures(
     db: Session = Depends(get_db)
 ):
     """🔴 Partite REALMENTE LIVE - con recupero quote reali dall'API-Football"""
-    print(f"[OPERATOR] 🔴 Live fixtures endpoint called")
+    logger.info(f"[OPERATOR] 🔴 Live fixtures endpoint called")
 
     try:
         # Recupera partite live dall'API-Football con chiamata HTTP diretta
-        print(f"[OPERATOR] 📡 Getting live fixtures from API-Football (direct HTTP)...")
+        logger.info(f"[OPERATOR] 📡 Getting live fixtures from API-Football (direct HTTP)...")
 
         import httpx
         from app.core.config import settings
@@ -298,9 +298,9 @@ async def get_live_fixtures(
             if response.status_code == 200:
                 data = response.json()
                 live_fixtures_from_api = data.get('response', [])
-                print(f"[OPERATOR] 📡 Got {len(live_fixtures_from_api)} fixtures from API")
+                logger.info(f"[OPERATOR] 📡 Got {len(live_fixtures_from_api)} fixtures from API")
             else:
-                print(f"[OPERATOR] ❌ API returned status {response.status_code}")
+                logger.info(f"[OPERATOR] ❌ API returned status {response.status_code}")
                 live_fixtures_from_api = []
 
         # Filtra solo partite davvero live (quelle con status live)
@@ -314,9 +314,9 @@ async def get_live_fixtures(
 
             if is_status_live:
                 truly_live_fixtures.append(fixture)
-                print(f"[OPERATOR] ⚽ Live fixture: {fixture.get('teams', {}).get('home', {}).get('name')} vs {fixture.get('teams', {}).get('away', {}).get('name')} - {status.get('long')}")
+                logger.info(f"[OPERATOR] ⚽ Live fixture: {fixture.get('teams', {}).get('home', {}).get('name')} vs {fixture.get('teams', {}).get('away', {}).get('name')} - {status.get('long')}")
 
-        print(f"[OPERATOR] 🎯 Filtered to {len(truly_live_fixtures)} truly live fixtures")
+        logger.info(f"[OPERATOR] 🎯 Filtered to {len(truly_live_fixtures)} truly live fixtures")
 
         # Converti in formato semplice per il frontend e recupera quote reali
         live_matches = []
@@ -421,7 +421,7 @@ async def get_live_fixtures(
         return live_matches
 
     except Exception as e:
-        print(f"[OPERATOR] ❌ Error in get_live_fixtures: {str(e)}")
+        logger.info(f"[OPERATOR] ❌ Error in get_live_fixtures: {str(e)}")
         import traceback
         traceback.print_exc()
         return []
@@ -477,10 +477,10 @@ async def _save_odds_to_database(odds_data: List[Dict[str, Any]], fixture_id: in
                         db.add(odds_record)
 
         db.commit()
-        print(f"[OPERATOR] 💾 Saved odds to database for fixture {fixture_id}")
+        logger.info(f"[OPERATOR] 💾 Saved odds to database for fixture {fixture_id}")
 
     except Exception as e:
-        print(f"[OPERATOR] ⚠️ Error saving odds to database for fixture {fixture_id}: {str(e)}")
+        logger.info(f"[OPERATOR] ⚠️ Error saving odds to database for fixture {fixture_id}: {str(e)}")
         db.rollback()
 
 async def _convert_api_fixture_to_frontend(api_fixture: Dict[str, Any], db: Session) -> FixtureResponse:
@@ -556,7 +556,7 @@ async def get_upcoming_fixtures(
         if has_1x2_odds:
             result.append(fixture_data)
     
-    print(f"Upcoming: {len(result)} matches with 1X2 odds from {len(fixtures)} total today fixtures")
+    logger.info(f"Upcoming: {len(result)} matches with 1X2 odds from {len(fixtures)} total today fixtures")
     return result
 
 async def _get_fixtures_by_date(target_date: date, league_id: Optional[int], db: Session) -> FixturesByDateResponse:
@@ -650,16 +650,16 @@ async def _get_fixtures_by_date(target_date: date, league_id: Optional[int], db:
                 if has_1x2_odds:
                     matches.append(fixture_data)
                     successful_count += 1
-                    print(f"✅ INCLUDED: Fixture {fixture.fixture_id} - Complete 1X2 odds (markets: {total_markets}/3, bookmakers: {bookmaker_count})")
+                    logger.info(f"✅ INCLUDED: Fixture {fixture.fixture_id} - Complete 1X2 odds (markets: {total_markets}/3, bookmakers: {bookmaker_count})")
                 else:
-                    print(f"❌ FILTERED: Fixture {fixture.fixture_id} - Missing 1X2 odds (1:{has_1_odds}, X:{has_x_odds}, 2:{has_2_odds}) - Has {total_markets}/3 markets")
+                    logger.info(f"❌ FILTERED: Fixture {fixture.fixture_id} - Missing 1X2 odds (1:{has_1_odds}, X:{has_x_odds}, 2:{has_2_odds}) - Has {total_markets}/3 markets")
             except Exception as e:
                 # Log error but continue with other fixtures
-                print(f"Error building fixture response for {fixture.fixture_id}: {str(e)}")
+                logger.info(f"Error building fixture response for {fixture.fixture_id}: {str(e)}")
                 error_count += 1
                 continue
 
-        print(f"Processed {len(fixtures)} fixtures: {successful_count} with 1X2 odds included, {error_count} without odds (filtered out)")
+        logger.info(f"Processed {len(fixtures)} fixtures: {successful_count} with 1X2 odds included, {error_count} without odds (filtered out)")
 
         return FixturesByDateResponse(
             date=target_date.isoformat(),
@@ -668,7 +668,7 @@ async def _get_fixtures_by_date(target_date: date, league_id: Optional[int], db:
         )
     except Exception as e:
         # Return empty response if there's any error
-        print(f"Error in _get_fixtures_by_date: {str(e)}")
+        logger.info(f"Error in _get_fixtures_by_date: {str(e)}")
         return FixturesByDateResponse(
             date=target_date.isoformat(),
             total_matches=0,
@@ -715,11 +715,11 @@ async def _get_important_fixtures_by_date(target_date: date, important_league_id
                 matches.append(fixture_data)
                 successful_count += 1
             except Exception as e:
-                print(f"Error building fixture response for {fixture.fixture_id}: {str(e)}")
+                logger.info(f"Error building fixture response for {fixture.fixture_id}: {str(e)}")
                 error_count += 1
                 continue
 
-        print(f"Processed {len(fixtures)} important fixtures: {successful_count} successful, {error_count} errors")
+        logger.info(f"Processed {len(fixtures)} important fixtures: {successful_count} successful, {error_count} errors")
 
         return FixturesByDateResponse(
             date=target_date.isoformat(),
@@ -727,7 +727,7 @@ async def _get_important_fixtures_by_date(target_date: date, important_league_id
             matches=matches
         )
     except Exception as e:
-        print(f"Error in _get_important_fixtures_by_date: {str(e)}")
+        logger.info(f"Error in _get_important_fixtures_by_date: {str(e)}")
         return FixturesByDateResponse(
             date=target_date.isoformat(),
             total_matches=0,
@@ -780,7 +780,7 @@ async def _build_fixture_response(fixture: FixtureTrackingStatus, db: Session) -
                 best_odds[market] = market_odds
         except Exception as e:
             # Log error but continue with other markets
-            print(f"Error getting odds for fixture {fixture.fixture_id}, market {market}: {str(e)}")
+            logger.info(f"Error getting odds for fixture {fixture.fixture_id}, market {market}: {str(e)}")
             continue
     
     # Opzionale: aggiungi altri mercati se disponibili, ma non obbligatorio
@@ -792,7 +792,7 @@ async def _build_fixture_response(fixture: FixtureTrackingStatus, db: Session) -
                 best_odds[market] = market_odds
         except Exception as e:
             # Log error but continue with other markets
-            print(f"Error getting odds for fixture {fixture.fixture_id}, market {market}: {str(e)}")
+            logger.info(f"Error getting odds for fixture {fixture.fixture_id}, market {market}: {str(e)}")
             continue
     
     # ⚡ OTTIMIZZAZIONE: Predizioni NON caricate per performance (frontend non le usa)
@@ -831,7 +831,7 @@ async def _build_fixture_response_no_country(fixture: FixtureTrackingStatus, db:
                 best_odds[market] = market_odds
         except Exception as e:
             # Log error but continue with other markets
-            print(f"Error getting odds for fixture {fixture.fixture_id}, market {market}: {str(e)}")
+            logger.info(f"Error getting odds for fixture {fixture.fixture_id}, market {market}: {str(e)}")
             continue
 
     # ⚡ OTTIMIZZAZIONE: Predizioni NON caricate per performance (frontend non le usa)

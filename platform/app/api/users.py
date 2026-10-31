@@ -39,8 +39,6 @@ router = APIRouter(prefix="/users", tags=["users"])
 @router.post("/register")
 def register_user(user: UserCreate, request: Request, db: Session = Depends(get_db)):
     """Registra nuovo utente con controlli di sicurezza"""
-    
-    print(f"[REGISTRATION DEBUG] Function called with user: {user.username if user else 'None'}")
     logger.info(f"[REGISTRATION DEBUG] Function called with user: {user.username if user else 'None'}")
     
     try:
