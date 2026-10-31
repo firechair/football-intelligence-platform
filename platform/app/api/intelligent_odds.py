@@ -49,16 +49,6 @@ class AlertCreate(BaseModel):
     alert_type: str
     criteria: Dict[str, Any]
 
-class BettingSuggestion(BaseModel):
-    market: str
-    recommended_bookmaker: str
-    reason: str
-    confidence: float
-    expected_value: Optional[float] = None
-    odds: Optional[float] = None
-    user_success_rate: Optional[float] = None
-    bookmaker_specialization: bool = False
-
 # API Endpoints
 
 @router.get("/odds/best/{fixture_id}/{market}", response_model=Optional[BestOddResponse])
@@ -68,37 +58,9 @@ async def get_best_odds(
 ):
     """Get best odds for specific fixture and market"""
     try:
-        # Try to get from cache first
-        try:
-            best_odd = await intelligent_cache.get_best_odd(fixture_id, market)
-            if best_odd:
-                return BestOddResponse(**best_odd)
-        except Exception as cache_error:
-            logger.warning(f"Cache service failed, using fallback: {cache_error}")
-        
-        # Fallback: return mock data
-        mock_odds = {
-            "1": {"Bookmaker A": 1.85, "Bookmaker B": 1.82, "Bookmaker K": 1.88},
-            "X": {"Bookmaker A": 3.20, "Bookmaker B": 3.15, "Bookmaker K": 3.25},
-            "2": {"Bookmaker A": 4.50, "Bookmaker B": 4.40, "Bookmaker K": 4.60}
-        }
-        
-        if market in mock_odds:
-            bookmaker_odds = mock_odds[market]
-            best_bookmaker = max(bookmaker_odds.keys(), key=lambda k: bookmaker_odds[k])
-            best_value = bookmaker_odds[best_bookmaker]
-            
-            return BestOddResponse(
-                bookmaker=best_bookmaker,
-                value=best_value,
-                timestamp=datetime.now().timestamp(),
-                competitors=bookmaker_odds,
-                fixture_id=fixture_id,
-                market=market
-            )
-        
-        return None
-        
+        best_odd = await intelligent_cache.get_best_odd(fixture_id, market)
+        return BestOddResponse(**best_odd) if best_odd else None
+
     except Exception as e:
         logger.error(f"Error getting best odds: {e}")
         # Return None instead of raising exception to prevent 500 errors
@@ -111,73 +73,9 @@ async def get_bookmaker_rankings(
 ):
     """Get comprehensive bookmaker rankings"""
     try:
-        # Always return mock data for now to prevent 500 errors
-        # TODO: Implement real analytics when database is ready
-        mock_rankings = [
-            BookmakerRanking(
-                bookmaker="Bookmaker A",
-                win_rate=0.85,
-                consistency_score=0.92,
-                market_specializations=["football", "tennis"],
-                market_coverage=0.95,
-                total_markets=150,
-                best_odds_count=120,
-                trend_direction="stable",
-                value_score=0.88,
-                last_updated=datetime.now().isoformat()
-            ),
-            BookmakerRanking(
-                bookmaker="Bookmaker B",
-                win_rate=0.82,
-                consistency_score=0.88,
-                market_specializations=["football", "basketball"],
-                market_coverage=0.90,
-                total_markets=120,
-                best_odds_count=95,
-                trend_direction="improving",
-                value_score=0.85,
-                last_updated=datetime.now().isoformat()
-            ),
-            BookmakerRanking(
-                bookmaker="Bookmaker K",
-                win_rate=0.80,
-                consistency_score=0.85,
-                market_specializations=["football", "horse_racing"],
-                market_coverage=0.88,
-                total_markets=110,
-                best_odds_count=85,
-                trend_direction="stable",
-                value_score=0.82,
-                last_updated=datetime.now().isoformat()
-            ),
-            BookmakerRanking(
-                bookmaker="Bookmaker F",
-                win_rate=0.78,
-                consistency_score=0.83,
-                market_specializations=["football", "tennis"],
-                market_coverage=0.85,
-                total_markets=100,
-                best_odds_count=75,
-                trend_direction="declining",
-                value_score=0.79,
-                last_updated=datetime.now().isoformat()
-            ),
-            BookmakerRanking(
-                bookmaker="Bookmaker G",
-                win_rate=0.75,
-                consistency_score=0.80,
-                market_specializations=["football", "cricket"],
-                market_coverage=0.82,
-                total_markets=90,
-                best_odds_count=65,
-                trend_direction="stable",
-                value_score=0.76,
-                last_updated=datetime.now().isoformat()
-            )
-        ]
-        
-        return mock_rankings
-        
+        rankings = await bookmaker_analytics.calculate_bookmaker_rankings(sport, period)
+        return [BookmakerRanking(**ranking) for ranking in rankings]
+
     except Exception as e:
         logger.error(f"Error getting bookmaker rankings: {e}")
         # Return empty list instead of raising exception to prevent 500 errors
@@ -221,35 +119,6 @@ async def update_user_preferences(
         raise
     except Exception as e:
         logger.error(f"Error updating user preferences: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
-@router.get("/users/{user_id}/suggestions", response_model=List[BettingSuggestion])
-async def get_user_suggestions(
-    user_id: int,
-    current_user: models.User = Depends(get_current_user)
-):
-    """Get personalized betting suggestions for user"""
-    try:
-        # Ensure user can only access their own suggestions or admin access
-        if current_user.id != user_id and not getattr(current_user, 'is_admin', False):
-            raise HTTPException(status_code=403, detail="Access denied")
-        
-        # TODO: Implement real match data retrieval from current matches
-        # For now, return empty suggestions to avoid showing fake data
-        suggestions = []
-        
-        # In real implementation, this would:
-        # 1. Fetch current live matches with odds
-        # 2. Analyze user betting history and preferences
-        # 3. Generate personalized suggestions based on real data
-        # suggestions = await bookmaker_analytics.generate_user_suggestions(user_id, real_match_data)
-        
-        return [BettingSuggestion(**suggestion) for suggestion in suggestions]
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting user suggestions: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.post("/alerts/create")
@@ -388,42 +257,3 @@ async def get_analytics_summary(
     except Exception as e:
         logger.error(f"Error getting analytics summary: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
-
-@router.get("/markets/analysis/{fixture_id}")
-async def get_market_analysis(
-    fixture_id: int,
-    current_user: models.User = Depends(get_current_user)
-):
-    """Get comprehensive market analysis for a fixture"""
-    try:
-        # Sample implementation - in real scenario would analyze actual market data
-        markets_analysis = {
-            'fixture_id': fixture_id,
-            'markets': [
-                {
-                    'market': '1X2',
-                    'best_bookmaker': 'Bookmaker A',
-                    'best_odds': 2.15,
-                    'market_efficiency': 0.85,
-                    'recommendation': 'Good value on outcome 1',
-                    'confidence': 0.78
-                },
-                {
-                    'market': 'Over/Under 2.5',
-                    'best_bookmaker': 'Bookmaker B',
-                    'best_odds': 1.90,
-                    'market_efficiency': 0.92,
-                    'recommendation': 'Fair pricing, no clear value',
-                    'confidence': 0.65
-                }
-            ],
-            'overall_recommendation': 'Consider 1X2 market for value betting',
-            'analysis_timestamp': '2025-01-25T10:00:00Z'
-        }
-        
-        return markets_analysis
-        
-    except Exception as e:
-        logger.error(f"Error getting market analysis: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-

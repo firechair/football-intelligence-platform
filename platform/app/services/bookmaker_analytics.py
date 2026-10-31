@@ -65,7 +65,7 @@ class BookmakerAnalyticsService:
                     
                 # Calculate comprehensive metrics
                 win_rate = (data['total_best_odds'] / data['total_markets']) * 100 if data['total_markets'] > 0 else 0
-                consistency_scores = [m.consistency_score for m in data['markets'] if m.consistency_score]
+                consistency_scores = [float(m.consistency_score) for m in data['markets'] if m.consistency_score]
                 avg_consistency = statistics.mean(consistency_scores) if consistency_scores else 0
                 
                 # Market coverage score (how many different markets they cover well)

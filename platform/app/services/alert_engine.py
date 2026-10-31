@@ -426,8 +426,8 @@ class SmartAlertEngine:
             
             if self.cache.redis:
                 # Store alert for 24 hours
-                await self.cache.redis.lpush(alert_key, json.dumps(alert_data))
-                await self.cache.redis.expire(alert_key, 86400)  # 24 hours
+                self.cache.redis.lpush(alert_key, json.dumps(alert_data))
+                self.cache.redis.expire(alert_key, 86400)  # 24 hours
                 
         except Exception as e:
             logger.error(f"Error sending alert: {e}")
