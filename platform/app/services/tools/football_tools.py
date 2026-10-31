@@ -9,6 +9,7 @@ Provides tool definitions and implementations for the LLM to autonomously:
 """
 
 import logging
+import os
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 import httpx
@@ -53,7 +54,7 @@ class FootballTools:
     def __init__(self):
         self.cache = SimpleCache()
         self.api_key = settings.FOOTBALL_API_KEY
-        self.api_base_url = "https://api-football-v1.p.rapidapi.com/v3"
+        self.api_base_url = os.getenv("FOOTBALL_TOOLS_API_BASE_URL", "https://api-football-v1.p.rapidapi.com/v3")
 
     @staticmethod
     def get_tool_definitions() -> List[Dict[str, Any]]:
