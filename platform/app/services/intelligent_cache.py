@@ -3,9 +3,7 @@ import json
 import time
 import asyncio
 from typing import Dict, Any, Optional, List
-from datetime import datetime, timedelta
-from sqlalchemy.orm import Session
-from sqlalchemy import and_, desc, func
+from sqlalchemy import and_
 import logging
 
 from app.core.config import REDIS_URL

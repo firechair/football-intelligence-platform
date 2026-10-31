@@ -5,12 +5,11 @@ import io
 import base64
 import json
 import logging
-from typing import List, Optional, Dict, Any
+from typing import List, Dict, Any
 from datetime import datetime, timedelta
 from fastapi import HTTPException, status
 
 from app.db.models import User
-from app.services.security import security_service
 
 logger = logging.getLogger(__name__)
 

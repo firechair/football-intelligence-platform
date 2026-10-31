@@ -1,11 +1,10 @@
 import asyncio
 from datetime import datetime, timedelta
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 from sqlalchemy.orm import Session
 from app.utils.football_api import football_api
 from app.models.predictions import MatchPredictions
 from app.models.odds_tracking import FixtureTrackingStatus
-from app.core.config import settings
 import logging
 
 logger = logging.getLogger(__name__)

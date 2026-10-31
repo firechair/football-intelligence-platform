@@ -1,10 +1,8 @@
-import asyncio
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
 from sqlalchemy.orm import Session
 from app.utils.football_api import football_api
 from app.models.odds_tracking import FixtureTrackingStatus
-from app.core.database import get_db
 import logging
 
 logger = logging.getLogger(__name__)

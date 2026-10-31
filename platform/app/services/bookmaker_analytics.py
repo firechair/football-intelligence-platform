@@ -1,8 +1,6 @@
-import asyncio
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
-from sqlalchemy.orm import Session
-from sqlalchemy import and_, desc, func, text
+from sqlalchemy import and_, text
 import logging
 import statistics
 

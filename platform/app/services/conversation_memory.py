@@ -4,11 +4,9 @@ Conversation Memory Service - Gestisce la memoria conversazionale temporanea per
 
 import time
 import logging
-import asyncio
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, asdict
-from datetime import datetime, timedelta
-import json
+from datetime import datetime
 import threading
 
 logger = logging.getLogger(__name__)

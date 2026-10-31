@@ -3,7 +3,6 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
-from app.core.database import get_db
 from app.models.odds_tracking import ExtendedOddsHistory, FixtureTrackingStatus
 from app.models.predictions import MatchPredictions  # 🆕 NUOVO
 from app.utils.football_api import football_api

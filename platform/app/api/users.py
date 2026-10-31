@@ -3,7 +3,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from app.models.user import UserCreate, UserOut
-from app.db import session as db_session, models
+from app.db import models
 from app.services import auth
 from app.services import user_service
 from app.services.security import security_service
@@ -11,8 +11,8 @@ from app.services.session_manager import session_manager
 from app.services.two_factor_auth import two_factor_service
 from typing import List, Optional
 import json
-from app.models.token import Token, TokenRefresh, TokenResponse
-from app.models.session import SessionOut, SessionTerminate
+from app.models.token import Token, TokenRefresh
+from app.models.session import SessionOut
 from app.models.two_factor import (
     TwoFactorSetupRequest, TwoFactorSetupResponse,
     TwoFactorVerifyRequest, TwoFactorDisableRequest,

@@ -1,14 +1,13 @@
 import asyncio
 import logging
-from datetime import datetime, timedelta, time
+from datetime import datetime, timedelta
 from typing import List
 
 from app.services.fixtures_collector import fixtures_collector
 from app.services.odds_collector import odds_collector
 from app.services.cleanup_service import cleanup_service
 from app.services.predictions_collector import predictions_collector
-from app.core.database import get_db, SessionLocal
-from app.core.config import settings
+from app.core.database import get_db
 
 logger = logging.getLogger(__name__)
 

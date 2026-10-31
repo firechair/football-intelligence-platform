@@ -1,5 +1,4 @@
 from pydantic import BaseModel, ConfigDict
-from typing import Optional
 
 class ChatMemoryBase(BaseModel):
     memory_context: str

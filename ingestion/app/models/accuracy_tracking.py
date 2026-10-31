@@ -1,5 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, func, DECIMAL, JSON, Index, ForeignKey
-from datetime import datetime
+from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, func, DECIMAL, JSON, Index
 
 # Importiamo il Base condiviso
 from . import Base

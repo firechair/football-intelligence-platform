@@ -9,7 +9,6 @@ from app.core.config import settings
 from app.db import get_db, models
 from app.services.security import security_service
 from app.services.session_manager import session_manager
-import os
 import json
 import logging
 

@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func, desc, and_, or_
-from typing import List, Dict, Any, Optional
+from sqlalchemy import func, desc, and_
+from typing import List, Dict, Optional
 from datetime import datetime, timedelta
 from pydantic import BaseModel
 
 from app.core.database import get_db
-from app.models.odds_tracking import ExtendedOddsHistory, FixtureTrackingStatus, BookmakerInfo
+from app.models.odds_tracking import ExtendedOddsHistory, FixtureTrackingStatus
 
 router = APIRouter(prefix="/odds", tags=["odds"])
 

@@ -3,18 +3,15 @@ Accuracy Evaluator Service
 Version: 2025.11.30 - Date Normalization Fix + Error Reporting
 Commit: b316dd8 + 8f0540e
 """
-import asyncio
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Any
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, func
 
 from app.models import (
     MatchPredictions,
     FinishedFixtures,
-    PredictionAccuracy,
-    FixtureTrackingStatus
+    PredictionAccuracy
 )
 from app.utils.football_api import football_api
 

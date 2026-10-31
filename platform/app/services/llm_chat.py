@@ -3,7 +3,6 @@ import httpx
 import asyncio
 import logging
 from typing import Dict, Any, Optional, List
-from fastapi import HTTPException, status
 
 # --- Configuration ---
 # Read sensitive data from environment variables

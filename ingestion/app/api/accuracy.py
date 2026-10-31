@@ -80,7 +80,6 @@ def get_accuracy_summary(
     try:
         from app.models.accuracy_tracking import PredictionAccuracy
         from datetime import datetime, timedelta
-        from sqlalchemy import func
 
         # Calcola la data di inizio
         start_date = datetime.now() - timedelta(days=days_back)

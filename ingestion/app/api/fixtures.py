@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func, desc, and_, or_
+from sqlalchemy import desc, and_
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta, date, time
 from pydantic import BaseModel
@@ -12,10 +12,7 @@ from app.core.database import get_db
 from app.models.odds_tracking import FixtureTrackingStatus, ExtendedOddsHistory, BookmakerInfo
 # MatchPredictions non più usato per performance
 from app.services.cache_service import (
-    cache_service,
-    get_fixtures_cache_key,
-    get_fixtures_range_cache_key,
-    get_live_fixtures_cache_key
+    cache_service
 )
 
 router = APIRouter(prefix="/fixtures", tags=["fixtures"])

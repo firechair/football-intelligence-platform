@@ -1,6 +1,6 @@
 import os
 import logging
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api import accuracy, fixtures as fixtures_api, assets as assets_api
 
@@ -14,9 +14,8 @@ from datetime import datetime
 # PRODUCTION APPROACH: Create database schema if missing
 from app.core.database import init_database, get_db
 from app.core.config import settings
-from app.core.scheduler import scheduler, live_odds_monitor
+from app.core.scheduler import scheduler
 from sqlalchemy import text
-from sqlalchemy.orm import Session
 
 # Global database status
 db_initialized = False
@@ -185,7 +184,6 @@ async def db_test_endpoint():
             # Try to create tables if they don't exist
             try:
                 from app.models.odds_tracking import Base
-                from app.models.predictions import MatchPredictions
                 logger.info("📋 Creating database tables if missing...")
                 Base.metadata.create_all(bind=engine)
                 logger.info("✅ Database tables created/verified")
@@ -245,8 +243,6 @@ async def get_predictions(days_ahead: int = 1, limit: int = 10):
             return [{"database_status": "not_ready", "error": db_test.get("error")}]
     
     try:
-        from app.models.predictions import MatchPredictions
-        from sqlalchemy import and_
         from datetime import datetime, timedelta
         
         db = next(get_db())

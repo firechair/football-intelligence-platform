@@ -1,5 +1,4 @@
 import uuid
-import json
 import logging
 import threading
 from datetime import datetime, timedelta
@@ -7,9 +6,8 @@ from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import Session as DBSession
 from sqlalchemy import and_, or_
 
-from app.db.models import Session as SessionModel, User
-from app.models.session import SessionCreate, SessionOut, SessionUpdate
-from app.services.security import security_service
+from app.db.models import Session as SessionModel
+from app.models.session import SessionOut
 
 logger = logging.getLogger(__name__)
 

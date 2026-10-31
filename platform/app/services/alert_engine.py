@@ -1,9 +1,8 @@
 import asyncio
 import json
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 from datetime import datetime, timedelta
-from sqlalchemy.orm import Session
-from sqlalchemy import and_, desc
+from sqlalchemy import and_
 import logging
 
 from app.db.session import get_db

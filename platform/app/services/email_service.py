@@ -3,11 +3,9 @@ Email Service for sending notifications, password reset, and email verification 
 """
 import os
 import logging
-from typing import Optional, Dict, Any
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail, To
 from jinja2 import Template
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 

@@ -1,8 +1,7 @@
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 import re
-import redis
-from fastapi import HTTPException, Request
+from fastapi import Request
 import hashlib
 import secrets
 import logging
