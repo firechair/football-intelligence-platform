@@ -179,86 +179,15 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         logger.warning(f"JWT validation failed: {str(e)}")
         raise credentials_exception
     
-    # Get user using raw SQL to avoid ORM issues
-    from sqlalchemy import text
-    
-    # Try to select with 2FA columns, fall back to basic columns if they don't exist
-    try:
-        user_data = db.execute(text("""
-            SELECT id, username, email, hashed_password, full_name, preferences,
-                   created_at, email_verified, email_verification_token, two_factor_enabled, two_factor_secret, backup_codes
-            FROM users 
-            WHERE id = :user_id
-            LIMIT 1
-        """), {"user_id": user_id}).fetchone()
-    except Exception as e:
-        if "does not exist" in str(e):
-            # Fall back to basic query without 2FA columns
-            user_data = db.execute(text("""
-                SELECT id, username, email, hashed_password, full_name, preferences, created_at, email_verification_token
-                FROM users 
-                WHERE id = :user_id
-                LIMIT 1
-            """), {"user_id": user_id}).fetchone()
-            
-            # Extend user_data with default values for missing fields
-            if user_data:
-                user_data = type('Row', (), {
-                    'id': user_data.id,
-                    'username': user_data.username,
-                    'email': user_data.email,
-                    'hashed_password': user_data.hashed_password,
-                    'full_name': user_data.full_name,
-                    'preferences': user_data.preferences,
-                    'created_at': user_data.created_at,
-                    'email_verified': False,
-                    'email_verification_token': getattr(user_data, 'email_verification_token', None),
-                    'two_factor_enabled': False,
-                    'two_factor_secret': None,
-                    'backup_codes': None
-                })()
-        else:
-            raise e
-    
-    if user_data is None:
+    # An ORM object, not a copy: profile and 2FA routes change it and commit
+    user = db.get(models.User, user_id)
+    if user is None:
         logger.warning(f"User not found in database for user_id: {user_id}")
         raise credentials_exception
-    
-    # Create user-like object
-    class UserResponse:
-        def __init__(self, row):
-            self.id = row.id
-            self.username = row.username  
-            self.email = row.email
-            self.hashed_password = row.hashed_password
-            self.full_name = row.full_name
-            try:
-                if isinstance(row.preferences, (dict, list)):
-                    self.preferences = row.preferences
-                elif isinstance(row.preferences, (str, bytes, bytearray)) and row.preferences:
-                    self.preferences = json.loads(row.preferences)
-                else:
-                    self.preferences = {}
-            except Exception:
-                self.preferences = {}
-            self.created_at = row.created_at
-            self.email_verified = row.email_verified or False
-            self.email_verification_token = getattr(row, 'email_verification_token', None)
-            self.two_factor_enabled = row.two_factor_enabled or False
-            self.two_factor_secret = row.two_factor_secret
-            try:
-                if isinstance(row.backup_codes, (list, dict)):
-                    self.backup_codes = row.backup_codes if isinstance(row.backup_codes, list) else []
-                elif isinstance(row.backup_codes, (str, bytes, bytearray)) and row.backup_codes:
-                    self.backup_codes = json.loads(row.backup_codes)
-                else:
-                    self.backup_codes = []
-            except Exception:
-                self.backup_codes = []
-            # Attach session info for convenience
-            self._session_id = session_id
-    
-    return UserResponse(user_data)
+
+    # Attach session info for convenience
+    user._session_id = session_id
+    return user
 
 def authenticate_user(db: Session, username: str, password: str, request: Request = None) -> Optional[models.User]:
     """Autentica utente con controlli di sicurezza"""
