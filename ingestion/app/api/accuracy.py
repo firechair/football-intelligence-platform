@@ -4,11 +4,6 @@ from app.core.database import get_db
 
 router = APIRouter()
 
-@router.get("/test")
-async def test_accuracy_endpoint():
-    """Endpoint di test per verificare che il modulo sia caricato"""
-    return {"success": True, "message": "Accuracy module loaded successfully"}
-
 @router.get("/results")
 def get_accuracy_results(
     limit: int = Query(50, ge=1, le=500),
@@ -175,32 +170,14 @@ def get_finished_fixtures(
         "note": "Partite finite non ancora raccolte"
     }
 
-@router.post("/collect")
-def collect_finished_fixtures():
-    """Raccoglie i risultati delle partite finite - versione minima"""
-    return {
-        "success": True,
-        "message": "Collect endpoint working",
-        "collected_count": 0
-    }
-
-@router.post("/evaluate")
-def evaluate_predictions_accuracy():
-    """Valuta l'accuratezza delle predizioni - versione minima"""
-    return {
-        "success": True,
-        "message": "Evaluate endpoint working",
-        "evaluated_count": 0
-    }
-
 @router.post("/collect-and-evaluate")
 async def collect_and_evaluate_all(db: Session = Depends(get_db)):
     """Valuta l'accuratezza delle predizioni - versione con logica reale"""
     try:
-        from app.services.accuracy_evaluator import AccuracyEvaluator
+        from app.services.accuracy_evaluator import PredictionAccuracyEvaluator
 
-        evaluator = AccuracyEvaluator()
-        result = await evaluator.collect_and_evaluate_all(db)
+        evaluator = PredictionAccuracyEvaluator(db)
+        result = await evaluator.collect_and_evaluate_all()
 
         return {
             "success": True,
@@ -218,5 +195,3 @@ async def collect_and_evaluate_all(db: Session = Depends(get_db)):
                 "error": str(e)
             }
         }
-# Deploy test
-# Emergency deploy fix
