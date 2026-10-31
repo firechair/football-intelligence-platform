@@ -1,0 +1,7 @@
+Flask==2.2.5
+requests
+boto3
+pandas
+matplotlib
+seaborn
+scipy
