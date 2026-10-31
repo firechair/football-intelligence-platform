@@ -15,6 +15,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "demo"))
 from mock_football_api.app import create_app as create_football_api  # noqa: E402
 from mock_llm.app import create_app as create_llm  # noqa: E402
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+
+import ask_agent  # noqa: E402
+
 from app.services import function_calling_orchestrator as orchestrator_module  # noqa: E402
 
 QUESTION = "What are the odds for Inter vs Milan?"
@@ -77,3 +81,18 @@ async def test_agent_reports_llm_failure(live_mocks, monkeypatch):
     result = await orchestrator_module.FunctionCallingOrchestrator().process_message(QUESTION, user_id="demo")
     assert "error" in result["metadata"]
     assert result["tool_calls_made"] == []
+
+
+async def test_script_prints_tools_and_reply(live_mocks, capsys):
+    live_mocks()
+    assert await ask_agent.main(QUESTION) == 0
+    output = capsys.readouterr().out
+    assert "→ tool get_match_odds(" in output
+    assert "Bookmaker A" in output
+
+
+async def test_script_stops_at_compliance_before_calling_the_llm(live_mocks, capsys):
+    llm_url = live_mocks()
+    assert await ask_agent.main("Non posso smettere di giocare") == 0
+    assert "800 55 88 22" in capsys.readouterr().out
+    assert httpx.get(f"{llm_url}/__requests").json()["requests"] == 0
