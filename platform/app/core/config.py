@@ -21,11 +21,18 @@ RAILWAY_ENVIRONMENT = os.getenv("RAILWAY_ENVIRONMENT", "development")
 PORT = int(os.getenv("PORT", 8000))
 
 # Football API Configuration
-FOOTBALL_API_KEY = os.getenv("FOOTBALL_API_KEY", "REDACTED")
+FOOTBALL_API_KEY = os.getenv("FOOTBALL_API_KEY", "")
 
-# JWT Configuration
-SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
-REFRESH_SECRET_KEY = os.getenv("REFRESH_SECRET_KEY", "your-refresh-secret-key-change-in-production")
+# JWT Configuration: no defaults, a known signing key would let anyone forge tokens
+def _required(name: str) -> str:
+    value = os.getenv(name)
+    if not value:
+        raise RuntimeError(f"{name} environment variable is required")
+    return value
+
+
+SECRET_KEY = _required("SECRET_KEY")
+REFRESH_SECRET_KEY = _required("REFRESH_SECRET_KEY")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 30))
 REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", 30))
@@ -34,7 +41,7 @@ REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", 30))
 SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
 FROM_EMAIL = os.getenv("FROM_EMAIL", "noreply@example.invalid")
 FROM_NAME = os.getenv("FROM_NAME", "FIP")
-BASE_URL = os.getenv("BASE_URL", "https://example.invalid")
+BASE_URL = os.getenv("BASE_URL", "http://localhost:3000")
 
 # Redis Configuration (for rate limiting)
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")

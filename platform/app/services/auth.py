@@ -5,6 +5,7 @@ from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
+from app.core.config import settings
 from app.db import get_db, models
 from app.services.security import security_service
 from app.services.session_manager import session_manager
@@ -14,8 +15,8 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-SECRET_KEY = os.getenv("SECRET_KEY", "supersecretkey")
-REFRESH_SECRET_KEY = os.getenv("REFRESH_SECRET_KEY", "refreshsecretkey")
+SECRET_KEY = settings.SECRET_KEY
+REFRESH_SECRET_KEY = settings.REFRESH_SECRET_KEY
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30  # Ridotto per sicurezza
 REFRESH_TOKEN_EXPIRE_DAYS = 7
