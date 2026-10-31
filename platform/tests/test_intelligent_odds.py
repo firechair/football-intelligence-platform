@@ -2,6 +2,7 @@ import asyncio
 
 import pytest
 
+from app.db import models
 from app.main import app
 from app.services.football_api_mapper import FootballAPIMapper
 from app.services.intelligent_cache import intelligent_cache
@@ -91,3 +92,11 @@ async def test_rankings_are_also_calculated_when_redis_is_connected(client, db_s
     add_stats(db_session)
     names = [row["bookmaker"] for row in client.get("/api/v2/bookmakers/rankings").json()]
     assert names == ["Bookmaker A", "Bookmaker B"]
+
+
+async def test_rankings_are_served_from_the_cache_on_the_second_call(client, db_session, fake_redis, services_use_test_db):  # noqa: F811
+    add_stats(db_session)
+    first = client.get("/api/v2/bookmakers/rankings").json()
+    db_session.query(models.BookmakerStats).delete()
+    db_session.commit()
+    assert client.get("/api/v2/bookmakers/rankings").json() == first

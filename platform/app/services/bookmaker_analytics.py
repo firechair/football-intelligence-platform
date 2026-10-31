@@ -99,6 +99,7 @@ class BookmakerAnalyticsService:
             rankings.sort(key=lambda x: x['value_score'], reverse=True)
             
             db.close()
+            await self.cache.set_bookmaker_rankings(sport, timeframe, rankings[:20])
             return rankings[:20]  # Return top 20
             
         except Exception as e:

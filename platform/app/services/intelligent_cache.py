@@ -122,17 +122,8 @@ class IntelligentOddsCache:
             )
             
             cached = self.redis.get(cache_key)
-            if cached:
-                return json.loads(cached)
-                
-            # If not cached, calculate and cache
-            rankings = await self._calculate_bookmaker_rankings(sport, timeframe)
-            
-            # Cache for 1 hour
-            self.redis.setex(cache_key, 3600, json.dumps(rankings))
-            
-            return rankings
-            
+            return json.loads(cached) if cached else []
+
         except Exception as e:
             logger.error(f"Error getting bookmaker rankings: {e}")
             return []
@@ -236,52 +227,19 @@ class IntelligentOddsCache:
         finally:
             db.close()
     
-    async def _calculate_bookmaker_rankings(self, sport: str, timeframe: str) -> List[Dict[str, Any]]:
-        """Calculate comprehensive bookmaker rankings"""
+    async def set_bookmaker_rankings(self, sport: str, timeframe: str, rankings: List[Dict[str, Any]]) -> None:
+        """Cache rankings calculated by the analytics service for one hour"""
+        if not self.redis:
+            return
+
         try:
-            db = next(get_db())
-            
-            # Parse timeframe
-            days = self._parse_timeframe(timeframe)
-            cutoff_date = datetime.utcnow() - timedelta(days=days)
-            
-            # Get bookmaker statistics
-            stats_query = db.query(models.BookmakerStats).filter(
-                and_(
-                    models.BookmakerStats.sport == sport,
-                    models.BookmakerStats.last_updated >= cutoff_date
-                )
-            ).all()
-            
-            rankings = []
-            for stat in stats_query:
-                value_score = (
-                    (stat.win_percentage or 0) * 0.4 +
-                    (stat.consistency_score or 0) * 100 * 0.3 +
-                    min((stat.total_markets or 0) / 1000 * 100, 100) * 0.3
-                )
-                
-                rankings.append({
-                    'bookmaker': stat.bookmaker,
-                    'win_rate': float(stat.win_percentage or 0),
-                    'consistency_score': float(stat.consistency_score or 0),
-                    'total_markets': stat.total_markets or 0,
-                    'best_odds_count': stat.best_odds_count or 0,
-                    'value_score': round(value_score, 2),
-                    'trend_direction': 'stable'  # TODO: Calculate from historical data
-                })
-            
-            # Sort by value score
-            rankings.sort(key=lambda x: x['value_score'], reverse=True)
-            
-            return rankings[:20]  # Top 20
-            
+            cache_key = self.cache_keys['bookmaker_rank'].format(
+                sport=sport, market='all', timeframe=timeframe
+            )
+            self.redis.setex(cache_key, 3600, json.dumps(rankings))
         except Exception as e:
-            logger.error(f"Error calculating bookmaker rankings: {e}")
-            return []
-        finally:
-            db.close()
-    
+            logger.error(f"Error caching bookmaker rankings: {e}")
+
     def _parse_timeframe(self, timeframe: str) -> int:
         """Parse timeframe string to days"""
         timeframe_map = {
