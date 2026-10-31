@@ -20,10 +20,13 @@ import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+from app.core.config import settings
 from app.models import Base
 
 # Usiamo il Base condiviso
 target_metadata = Base.metadata
+
+config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
