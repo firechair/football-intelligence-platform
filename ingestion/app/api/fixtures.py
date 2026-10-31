@@ -485,8 +485,6 @@ async def _convert_api_fixture_to_frontend(api_fixture: Dict[str, Any], db: Sess
     fixture_data = api_fixture.get('fixture', {})
     league_data = api_fixture.get('league', {})
     teams_data = api_fixture.get('teams', {})
-    goals_data = api_fixture.get('goals', {})
-    score_data = api_fixture.get('score', {})
 
     # Converti data
     fixture_date = datetime.fromisoformat(fixture_data.get('date', '').replace('Z', '+00:00'))
@@ -501,7 +499,7 @@ async def _convert_api_fixture_to_frontend(api_fixture: Dict[str, Any], db: Sess
     # TODO: Riaggiungere quote dopo aver risolto il problema di timeout
 
     return FixtureResponse(
-        fixture_id=fixture_id,
+        fixture_id=fixture_data.get('id'),
         home_team=teams_data.get('home', {}).get('name', 'Unknown'),
         away_team=teams_data.get('away', {}).get('name', 'Unknown'),
         home_team_logo=home_logo,

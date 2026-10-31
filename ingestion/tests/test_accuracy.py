@@ -129,3 +129,17 @@ async def test_summary_counts_evaluated_matches(client, db_session):
     body = client.get("/api/v1/accuracy/statistics/summary").json()
     assert body["total_predictions"] == 1
     assert body["accuracy_percentages"]["winner_accuracy"] == 100.0
+
+
+async def test_cleanup_of_evaluated_predictions_runs(db_session):
+    from app.services.cleanup_service import cleanup_service
+
+    assert (await cleanup_service._cleanup_evaluated_predictions(db_session))["deleted"] == 0
+
+
+async def test_fixture_data_for_evaluation_is_read_back(db_session):
+    from app.services.cleanup_service import cleanup_service
+
+    await _evaluated_fixture(db_session)
+    data = await cleanup_service._get_fixture_data_for_accuracy_evaluation(db_session, 1)
+    assert data["home_team"] == "Inter"

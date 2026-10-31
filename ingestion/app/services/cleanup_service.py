@@ -4,6 +4,7 @@ from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from app.models.odds_tracking import ExtendedOddsHistory, FixtureTrackingStatus
+from app.models.accuracy_tracking import FinishedFixtures, PredictionAccuracy
 from app.models.predictions import MatchPredictions  # 🆕 NUOVO
 from app.utils.football_api import football_api
 import logging
