@@ -71,7 +71,7 @@ class IntelligentOddsCache:
                     'market': market
                 }
                 
-                await self.redis.setex(
+                self.redis.setex(
                     cache_key, 
                     ttl,
                     json.dumps(cache_data)
@@ -102,7 +102,7 @@ class IntelligentOddsCache:
                 fixture_id=fixture_id, market=market
             )
             
-            cached = await self.redis.get(cache_key)
+            cached = self.redis.get(cache_key)
             if cached:
                 return json.loads(cached)
                 
@@ -121,7 +121,7 @@ class IntelligentOddsCache:
                 sport=sport, market='all', timeframe=timeframe
             )
             
-            cached = await self.redis.get(cache_key)
+            cached = self.redis.get(cache_key)
             if cached:
                 return json.loads(cached)
                 
@@ -129,7 +129,7 @@ class IntelligentOddsCache:
             rankings = await self._calculate_bookmaker_rankings(sport, timeframe)
             
             # Cache for 1 hour
-            await self.redis.setex(cache_key, 3600, json.dumps(rankings))
+            self.redis.setex(cache_key, 3600, json.dumps(rankings))
             
             return rankings
             
@@ -147,7 +147,7 @@ class IntelligentOddsCache:
                 user_id=user_id, sport=sport
             )
             
-            cached = await self.redis.get(cache_key)
+            cached = self.redis.get(cache_key)
             if cached:
                 return json.loads(cached)
                 
@@ -295,9 +295,9 @@ class IntelligentOddsCache:
             return
             
         try:
-            keys = await self.redis.keys(pattern)
+            keys = self.redis.keys(pattern)
             if keys:
-                await self.redis.delete(*keys)
+                self.redis.delete(*keys)
                 logger.info(f"Invalidated {len(keys)} cache entries matching {pattern}")
         except Exception as e:
             logger.error(f"Error invalidating cache: {e}")
@@ -308,8 +308,8 @@ class IntelligentOddsCache:
             return {}
             
         try:
-            info = await self.redis.info('memory')
-            keyspace_info = await self.redis.info('keyspace')
+            info = self.redis.info('memory')
+            keyspace_info = self.redis.info('keyspace')
             
             stats = {
                 'redis_memory_usage': info.get('used_memory_human', '0B'),
