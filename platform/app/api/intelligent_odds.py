@@ -194,7 +194,8 @@ async def get_cache_stats():
 async def update_odds_cache(
     fixture_id: int = Body(...),
     market: str = Body(...),
-    odds_data: Dict[str, float] = Body(...)
+    odds_data: Dict[str, float] = Body(...),
+    current_user: models.User = Depends(get_current_user)
 ):
     """Manually update odds cache (for testing/admin use)"""
     try:
@@ -206,7 +207,7 @@ async def update_odds_cache(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.post("/alerts/check")
-async def trigger_alert_check():
+async def trigger_alert_check(current_user: models.User = Depends(get_current_user)):
     """Manually trigger alert checking (for testing/admin use)"""
     try:
         await alert_engine.check_all_alerts()
