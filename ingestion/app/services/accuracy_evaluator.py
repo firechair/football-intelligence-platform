@@ -299,6 +299,20 @@ class PredictionAccuracyEvaluator:
             self.db.rollback()
             return False
 
+    @staticmethod
+    def _under_over_is_correct(predicted: str, total_goals: int) -> bool:
+        """Il fornitore usa soglie come '-3.5' (under) e '+2.5' (over); 'under'/'over' valgono 2.5 gol"""
+        value = predicted.strip().lower()
+        if value == "under":
+            return total_goals < 2.5
+        if value == "over":
+            return total_goals > 2.5
+        try:
+            threshold = float(value)
+        except ValueError:
+            return False
+        return total_goals < abs(threshold) if threshold < 0 else total_goals > threshold
+
     def _calculate_prediction_accuracy(self, fixture_data: Dict[str, Any]) -> Dict[str, Any]:
         """Calcola l'accuratezza di una predizione"""
         actual_winner = fixture_data['actual_winner']
@@ -309,10 +323,10 @@ class PredictionAccuracyEvaluator:
 
         # Accuratezza vincitore
         winner_accuracy = False
+        predicted_team = (predicted_winner_name or "").lower()
         if predicted_winner_name and actual_winner:
             # Confronto semplificato: controlla se il nome della squadra predetta
             # corrisponde al vincitore reale (case insensitive)
-            predicted_team = predicted_winner_name.lower()
             if actual_winner == "home" and predicted_team in fixture_data['home_team'].lower():
                 winner_accuracy = True
             elif actual_winner == "away" and predicted_team in fixture_data['away_team'].lower():
@@ -323,10 +337,7 @@ class PredictionAccuracyEvaluator:
         # Accuratezza under/over (2.5 gol)
         goals_accuracy = False
         if predicted_under_over and actual_total_goals is not None:
-            if predicted_under_over.lower() == "under" and actual_total_goals < 2.5:
-                goals_accuracy = True
-            elif predicted_under_over.lower() == "over" and actual_total_goals > 2.5:
-                goals_accuracy = True
+            goals_accuracy = self._under_over_is_correct(predicted_under_over, actual_total_goals)
 
         # Accuratezza totale gol (confronto esatto)
         total_goals_accuracy = False
@@ -341,11 +352,15 @@ class PredictionAccuracyEvaluator:
 
         # Accuratezza win/draw
         win_draw_accuracy = False
-        if predicted_win_or_draw and actual_winner:
-            if predicted_win_or_draw and actual_winner in ["home", "away"]:
-                win_draw_accuracy = True
-            elif not predicted_win_or_draw and actual_winner == "draw":
-                win_draw_accuracy = True
+        predicted_side = None
+        if predicted_winner_name:
+            if predicted_team in fixture_data['home_team'].lower():
+                predicted_side = "home"
+            elif predicted_team in fixture_data['away_team'].lower():
+                predicted_side = "away"
+        if predicted_side and actual_winner:
+            allowed = {predicted_side, "draw"} if predicted_win_or_draw else {predicted_side}
+            win_draw_accuracy = actual_winner in allowed
 
         # Punteggi percentuali
         winner_score = 100.0 if winner_accuracy else 0.0
