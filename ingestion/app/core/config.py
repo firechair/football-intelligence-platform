@@ -19,7 +19,7 @@ class OddsTrackerSettings:
     
     # Football API Configuration
     FOOTBALL_API_KEY: str = os.getenv("FOOTBALL_API_KEY")
-    FOOTBALL_API_BASE_URL: str = "https://v3.football.api-sports.io"
+    FOOTBALL_API_BASE_URL: str = os.getenv("FOOTBALL_API_BASE_URL", "https://v3.football.api-sports.io")
 
     # Rate Limiting Configuration - AGGIORNATO per gestire 5 req/sec
     MAX_CONCURRENT_REQUESTS: int = 5
