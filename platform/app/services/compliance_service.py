@@ -6,7 +6,6 @@ Ensures FIP operates within responsible gambling guidelines and regulations.
 Key Responsibilities:
 - Detect problematic gambling patterns in user messages
 - Intervene when risky behavior is detected
-- Enforce regulatory compliance (AGCOM, ADM in Italy)
 - Block harmful or addiction-encouraging responses
 - Provide gambling addiction resources when needed
 - Track user behavior for risk assessment
@@ -33,16 +32,18 @@ class ComplianceService:
     5. User risk tracking
     """
 
+    SAFE_RESPONSE = "Mi dispiace, non posso consigliare strategie di scommessa aggressive. Gioca sempre responsabilmente e scommetti solo importi che puoi permetterti di perdere."
+
     def __init__(self):
         # Addiction risk patterns (Italian and English)
         self.addiction_patterns = [
             # Financial distress
             r"devo\s+recuperare",  # "I need to recover"
-            r"perdite",  # "losses"
+            r"recuperare\s+(le\s+)?perdite",  # "recover the losses"
             r"ultimo\s+tentativo",  # "last attempt"
             r"senza\s+soldi",  # "no money"
-            r"debiti?",  # "debt/debts"
-            r"prestito",  # "loan"
+            r"debiti?\s+(di|per|col|con)\s+(il\s+)?(gioco|scommess|giocare)",  # "gambling debts"
+            r"prestito\s+per\s+(giocare|scommettere)",  # "loan to gamble"
             r"need\s+to\s+win\s+back",
             r"chase.*loss",
 
@@ -50,22 +51,22 @@ class ComplianceService:
             r"disperato",  # "desperate"
             r"non\s+posso\s+smettere",  # "can't stop"
             r"dipenden[tz]a",  # "addiction"
-            r"aiut(o|atemi)",  # "help (me)"
-            r"suicid",  # "suicide"
-            r"rovina(to|re)",  # "ruined"
+            r"aiut(o|atemi)\s+(con|per|a\s+smettere)\s+(il\s+|di\s+)?(gioco|giocare|scommesse|scommettere)",  # "help with gambling"
+            r"mi\s+sono\s+rovinato",  # "I've ruined myself"
 
             # Excessive betting
-            r"tutto\s+(su|in)",  # "everything on"
-            r"all[\s-]?in",
+            r"(scommett|punt|gioc)\w*\s+tutto",  # "bet everything"
+            r"\ball[\s-]?in\b",
             r"ultima\s+possibilità",  # "last chance"
-            r"sicur(o|issimo)",  # "sure/very sure"
             r"non\s+posso\s+perdere",  # "can't lose"
+        ]
 
-            # Time/frequency concerns
-            r"sempre|continuamente|ogni\s+giorno",  # "always/continuously/every day"
-            r"24/7",
-            r"non\s+dormo",  # "don't sleep"
-            r"solo\s+questo",  # "only this"
+        # Thoughts of self-harm take priority over every other pattern
+        self.crisis_patterns = [
+            r"suicid",
+            r"farla\s+finita",  # "end it all"
+            r"togliermi\s+la\s+vita",  # "take my life"
+            r"uccidermi",  # "kill myself"
         ]
 
         # Patterns that should trigger warnings but not blocks
@@ -145,6 +146,18 @@ class ComplianceService:
             }
 
             message_lower = message.lower()
+
+            # Check for self-harm before anything else
+            crisis_match = self._check_patterns(message_lower, self.crisis_patterns)
+            if crisis_match:
+                result["should_block"] = True
+                result["risk_level"] = "critical"
+                result["intervention_type"] = "crisis"
+                result["intervention_message"] = self._get_intervention_message("crisis")
+                result["compliance_notes"].append(f"Crisis pattern matched: {crisis_match}")
+                await self._log_intervention(user_id, "crisis", crisis_match)
+                logger.warning(f"[COMPLIANCE] Crisis message from user {user_id}")
+                return result
 
             # Check for critical addiction patterns
             critical_match = self._check_patterns(message_lower, self.addiction_patterns)
@@ -231,19 +244,14 @@ class ComplianceService:
             violations = []
             filtered_response = response
 
-            # Check for harmful patterns
+            # A harmful sentence cannot be repaired by swapping words: the whole response goes
             for pattern in self.harmful_response_patterns:
                 if re.search(pattern, filtered_response.lower()):
                     violations.append(f"Harmful pattern: {pattern}")
                     logger.warning(f"[COMPLIANCE] Harmful pattern detected in response for user {user_id}")
-
-                    # Replace harmful phrases with safer alternatives
-                    filtered_response = re.sub(
-                        pattern,
-                        "è una possibilità interessante",  # "is an interesting possibility"
-                        filtered_response,
-                        flags=re.IGNORECASE
-                    )
+            if violations:
+                logger.warning(f"[COMPLIANCE] Response filtered for user {user_id}: {violations}")
+                return self.SAFE_RESPONSE, violations
 
             # Ensure responsible gambling disclaimer is present for betting advice
             betting_advice_keywords = ["scommetti", "punta", "consiglio", "bet", "dovrest"]
@@ -257,7 +265,7 @@ class ComplianceService:
             # Check if response encourages excessive betting
             if "all-in" in response.lower() or "tutto su" in response.lower():
                 violations.append("Encourages excessive betting")
-                filtered_response = "Mi dispiace, non posso consigliare strategie di scommessa aggressive. Gioca sempre responsabilmente e scommetti solo importi che puoi permetterti di perdere."
+                filtered_response = self.SAFE_RESPONSE
 
             # Log violations
             if violations:
@@ -280,6 +288,16 @@ class ComplianceService:
     def _get_intervention_message(self, risk_level: str) -> str:
         """Get appropriate intervention message based on risk level."""
         messages = {
+            "crisis": """Mi dispiace che tu stia così male. Grazie per avermelo scritto.
+
+Non devi affrontare tutto questo senza aiuto: parla subito con qualcuno.
+
+- 📞 Emergenza: **112**
+- 📞 Telefono Amico Italia: **02 2327 2327**
+
+Anche i debiti di gioco si possono affrontare, con il giusto aiuto:
+- 📞 Numero Verde: **800 55 88 22** (Gioco Responsabile)""",
+
             "critical": """🚨 **Rilevato comportamento a rischio**
 
 Mi preoccupo per te. Il tuo messaggio suggerisce che potresti avere difficoltà con il gioco.
@@ -391,8 +409,6 @@ Posso aiutarti con analisi e informazioni, ma la decisione finale è sempre tua!
         points = risk_points.get(risk_level, 0)
         self.user_risk_scores[user_id] += points
 
-        # Decay score over time (reduce by 1 point per day)
-        # In production, this would be handled by a background job
         logger.debug(f"[COMPLIANCE] User {user_id} risk score: {self.user_risk_scores[user_id]}")
 
     async def _log_intervention(self, user_id: str, risk_level: str, pattern: str):
