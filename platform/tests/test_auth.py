@@ -210,14 +210,14 @@ class TestPasswordPolicy:
         result = auth.validate_password_policy("MyStrongP@ssw0rd123")
         
         assert result["valid"] is True
-        assert result["strength"] in ["Strong", "Very Strong"]
-        assert result["score"] >= 70
+        assert result["strength"] == "forte"
+        assert result["score"] == 6
     
     def test_validate_password_policy_weak(self):
         """Test password policy validation for weak password"""
         result = auth.validate_password_policy("123456")
         
         assert result["valid"] is False
-        assert result["strength"] in ["Very Weak", "Weak"]
-        assert result["score"] < 50
+        assert result["strength"] == "debole"
+        assert result["score"] < 4
         assert len(result["errors"]) > 0

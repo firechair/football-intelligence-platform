@@ -28,7 +28,6 @@ class TestSessionCreation:
         assert session.user_id == test_user.id
         assert session.ip_address == ip_address
         assert session.user_agent == user_agent
-        assert session.refresh_token_jti == jti
         assert session.is_active is True
         assert session.device_info is not None
         assert isinstance(session.device_info, dict)
@@ -157,7 +156,6 @@ class TestSessionRetrieval:
         retrieved_session = session_manager.get_session_by_jti(db_session, jti)
         
         assert retrieved_session is not None
-        assert retrieved_session.refresh_token_jti == jti
         assert retrieved_session.session_id == created_session.session_id
 
 

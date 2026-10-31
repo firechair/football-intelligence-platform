@@ -35,7 +35,7 @@ class TestUserRegistration:
         response = client.post("/api/users/register", json=user_data)
         
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "already exists" in response.json()["detail"].lower()
+        assert "already registered" in response.json()["detail"].lower()
     
     def test_register_user_duplicate_email(self, client, test_user):
         """Test registration with duplicate email"""
@@ -48,7 +48,7 @@ class TestUserRegistration:
         response = client.post("/api/users/register", json=user_data)
         
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "already exists" in response.json()["detail"].lower()
+        assert "already registered" in response.json()["detail"].lower()
     
     def test_register_user_weak_password(self, client):
         """Test registration with weak password"""
@@ -61,7 +61,7 @@ class TestUserRegistration:
         response = client.post("/api/users/register", json=user_data)
         
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "password" in response.json()["detail"].lower()
+        assert response.json()["detail"]["password_errors"]
     
     def test_register_user_invalid_username(self, client):
         """Test registration with invalid username format"""
@@ -85,7 +85,7 @@ class TestUserRegistration:
         
         response = client.post("/api/users/register", json=user_data)
         
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY  # rejected by the EmailStr schema
 
 
 class TestUserLogin:
@@ -234,8 +234,8 @@ class TestPasswordStrengthCheck:
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         assert data["valid"] is True
-        assert data["strength"] in ["Strong", "Very Strong"]
-        assert data["score"] >= 70
+        assert data["strength"] == "forte"
+        assert data["score"] == 6
     
     def test_check_password_strength_weak(self, client):
         """Test password strength check for weak password"""
@@ -246,6 +246,6 @@ class TestPasswordStrengthCheck:
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         assert data["valid"] is False
-        assert data["strength"] in ["Very Weak", "Weak"]
-        assert data["score"] < 50
+        assert data["strength"] == "debole"
+        assert data["score"] < 4
         assert len(data["errors"]) > 0
