@@ -32,3 +32,24 @@ def test_two_factor_setup_and_verify_enable_it(client, auth_headers, db_session,
 def test_refresh_returns_new_tokens(client, test_user_tokens):
     response = client.post("/api/users/refresh", json={"refresh_token": test_user_tokens["refresh_token"]})
     assert response.status_code == 200, response.text
+
+
+def test_login_with_two_factor_needs_the_code(client, auth_headers, db_session, test_user):
+    client.post("/api/users/2fa/setup", json={"password": "testpassword123"}, headers=auth_headers)
+    db_session.expire_all()
+    secret = db_session.get(User, test_user.id).two_factor_secret
+    client.post("/api/users/2fa/verify", json={"token": pyotp.TOTP(secret).now()}, headers=auth_headers)
+
+    login = client.post("/api/users/login", data={"username": "testuser", "password": "testpassword123"})
+    assert login.status_code == 200, login.text
+    assert "access_token" not in login.json()
+    temp_token = login.json()["temp_token"]
+
+    wrong = client.post("/api/users/2fa/verify-login", json={"temp_token": temp_token, "totp_code": "000000"})
+    assert wrong.status_code == 401
+
+    right = client.post(
+        "/api/users/2fa/verify-login", json={"temp_token": temp_token, "totp_code": pyotp.TOTP(secret).now()}
+    )
+    assert right.status_code == 200, right.text
+    assert right.json()["access_token"]

@@ -64,7 +64,7 @@ class TwoFactorAuthService:
         """Verify TOTP token"""
         try:
             totp = pyotp.TOTP(secret)
-            return totp.verify(token, window=window)
+            return totp.verify(token, valid_window=window)
         except Exception as e:
             logger.error(f"Error verifying TOTP: {e}")
             return False
