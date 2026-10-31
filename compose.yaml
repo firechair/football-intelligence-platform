@@ -92,3 +92,19 @@ services:
       interval: 3s
       timeout: 3s
       retries: 40
+
+  web:
+    build: ./web
+    ports:
+      - "3000:3000"
+    environment:
+      INGESTION_URL: http://ingestion:8001
+      HOSTNAME: 0.0.0.0
+    depends_on:
+      ingestion:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/accuracy').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 3s
+      timeout: 3s
+      retries: 40

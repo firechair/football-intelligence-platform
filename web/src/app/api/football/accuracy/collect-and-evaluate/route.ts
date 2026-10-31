@@ -1,13 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 
-export async function POST(request: NextRequest) {
+export async function POST() {
   try {
-    const searchParams = request.nextUrl.searchParams;
-    const days_back = searchParams.get('days_back') || '7';
-
     // Build backend URL
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://example.invalid';
-    const endpoint = `${backendUrl}/api/football/accuracy/collect-and-evaluate?days_back=${days_back}`;
+    const backendUrl = process.env.INGESTION_URL || 'http://localhost:8001';
+    const endpoint = `${backendUrl}/api/v1/accuracy/collect-and-evaluate`;
 
     console.log(`[ACCURACY COLLECT API] Calling backend: ${endpoint}`);
 

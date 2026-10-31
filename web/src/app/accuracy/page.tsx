@@ -15,61 +15,24 @@ import {
   RefreshCw,
   Calendar,
   Trophy,
-  Goal,
-  Trash2
+  Goal
 } from 'lucide-react';
 import { toast } from 'sonner';
-
-interface AccuracySummary {
-  success: boolean;
-  period_days: number;
-  total_predictions: number;
-  average_scores: {
-    winner_accuracy: number;
-    goals_accuracy: number;
-    overall_accuracy: number;
-  };
-  accuracy_counts: {
-    winner_correct: number;
-    goals_correct: number;
-    total_predictions: number;
-  };
-  accuracy_percentages: {
-    winner_accuracy: number;
-    goals_accuracy: number;
-  };
-}
-
-interface AccuracyResult {
-  fixture_id: number;
-  fixture_date: string;
-  league_name: string;
-  home_team: string;
-  away_team: string;
-  actual_score: string;
-  actual_winner: string;
-  predicted_winner: string;
-  winner_accuracy: boolean;
-  goals_accuracy: boolean;
-  winner_score: number;
-  goals_score: number;
-  overall_score: number;
-  evaluated_at: string;
-}
+import { AccuracyResult, AccuracySummary, toResults, toSummary } from '@/lib/accuracyAdapter';
 
 export default function AccuracyPage() {
   const [summary, setSummary] = useState<AccuracySummary | null>(null);
   const [results, setResults] = useState<AccuracyResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [evaluating, setEvaluating] = useState(false);
-  const [cleaning, setCleaning] = useState(false);
 
   const fetchSummary = async () => {
     try {
       const response = await fetch('/api/football/accuracy/summary?days_back=30');
       const data = await response.json();
-      if (data.success) {
-        setSummary(data);
+      const parsed = toSummary(data);
+      if (parsed.success) {
+        setSummary(parsed);
       }
     } catch (error) {
       console.error('Error fetching accuracy summary:', error);
@@ -80,9 +43,7 @@ export default function AccuracyPage() {
     try {
       const response = await fetch('/api/football/accuracy/results?limit=20');
       const data = await response.json();
-      if (data.success) {
-        setResults(data.results);
-      }
+      setResults(toResults(data));
     } catch (error) {
       console.error('Error fetching accuracy results:', error);
     }
@@ -108,29 +69,6 @@ export default function AccuracyPage() {
       console.error('Error evaluating accuracy:', error);
     } finally {
       setEvaluating(false);
-    }
-  };
-
-  const cleanupPredictions = async () => {
-    setCleaning(true);
-    try {
-      const response = await fetch('/api/football/cleanup/predictions?days_back=30', {
-        method: 'POST',
-      });
-      const data = await response.json();
-
-      if (data.success) {
-        toast.success('Pulizia predizioni completata!');
-        // Ricarica i dati per riflettere le modifiche
-        await fetchSummary();
-      } else {
-        toast.error('Errore nella pulizia: ' + (data.error || 'Errore sconosciuto'));
-      }
-    } catch (error) {
-      toast.error('Errore di connessione');
-      console.error('Error cleaning predictions:', error);
-    } finally {
-      setCleaning(false);
     }
   };
 
@@ -163,10 +101,6 @@ export default function AccuracyPage() {
           </h1>
           <p className="text-muted-foreground mt-2">
             Analizza le performance delle predizioni confrontandole con i risultati reali.
-            <br />
-            <small className="text-xs">
-              💡 Sistema intelligente: conserva predizioni fino a completa valutazione dell&apos;accuratezza, poi le rimuove dopo 7 giorni.
-            </small>
           </p>
         </div>
 
@@ -183,23 +117,15 @@ export default function AccuracyPage() {
             )}
             {evaluating ? 'Valutando...' : 'Valuta Accuratezza'}
           </Button>
-
-          <Button
-            onClick={cleanupPredictions}
-            disabled={cleaning}
-            variant="outline"
-            className="flex items-center gap-2"
-            title="Sistema intelligente: prima completa la valutazione dell'accuratezza per tutte le partite finite, poi rimuove solo le predizioni già valutate (>7 giorni dopo valutazione)."
-          >
-            {cleaning ? (
-              <RefreshCw className="h-4 w-4 animate-spin" />
-            ) : (
-              <Trash2 className="h-4 w-4" />
-            )}
-            {cleaning ? 'Pulendo...' : 'Pulisci Vecchie'}
-          </Button>
         </div>
       </div>
+
+      <p
+        role="note"
+        className="rounded-md border border-border bg-muted px-4 py-3 text-sm text-muted-foreground"
+      >
+        Demo data: synthetic results. Predictions come from the data provider, not from a proprietary model.
+      </p>
 
       <Tabs defaultValue="summary" className="space-y-6">
         <TabsList className="grid w-full grid-cols-2">

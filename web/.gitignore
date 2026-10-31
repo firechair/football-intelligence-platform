@@ -61,3 +61,4 @@ chat_response*.json
 # Railway deployment
 .deploy-trigger
 .railway-deploy
+next-env.d.ts

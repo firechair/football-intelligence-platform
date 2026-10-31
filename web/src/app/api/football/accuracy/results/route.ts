@@ -5,15 +5,11 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const limit = searchParams.get('limit') || '50';
     const offset = searchParams.get('offset') || '0';
-    const league_id = searchParams.get('league_id');
 
     // Build backend URL
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://example.invalid';
-    let endpoint = `${backendUrl}/api/football/accuracy/results?limit=${limit}&offset=${offset}`;
+    const backendUrl = process.env.INGESTION_URL || 'http://localhost:8001';
+    const endpoint = `${backendUrl}/api/v1/accuracy/results?limit=${limit}&offset=${offset}`;
 
-    if (league_id) {
-      endpoint += `&league_id=${league_id}`;
-    }
 
     console.log(`[ACCURACY RESULTS API] Calling backend: ${endpoint}`);
 

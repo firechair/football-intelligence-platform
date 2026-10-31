@@ -4,15 +4,11 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const days_back = searchParams.get('days_back') || '30';
-    const league_id = searchParams.get('league_id');
 
     // Build backend URL
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://example.invalid';
-    let endpoint = `${backendUrl}/api/football/accuracy/summary?days_back=${days_back}`;
+    const backendUrl = process.env.INGESTION_URL || 'http://localhost:8001';
+    const endpoint = `${backendUrl}/api/v1/accuracy/statistics/summary?days_back=${days_back}`;
 
-    if (league_id) {
-      endpoint += `&league_id=${league_id}`;
-    }
 
     console.log(`[ACCURACY SUMMARY API] Calling backend: ${endpoint}`);
 
