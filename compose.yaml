@@ -1,0 +1,94 @@
+# Keyless demo: every external service is replaced by a mock. See README.md.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: demo
+      POSTGRES_PASSWORD: demo-only
+      POSTGRES_DB: ingestion
+    volumes:
+      - ./demo/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U demo -d ingestion"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  mock-football-api:
+    build: ./demo
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8080/health')"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  mock-llm:
+    build: ./demo
+    command: ["uvicorn", "mock_llm.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8090"]
+    environment:
+      MOCK_LLM_MODE: ${MOCK_LLM_MODE:-normal}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8090/health')"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  ingestion:
+    build: ./ingestion
+    ports:
+      - "8001:8001"
+    environment:
+      DATABASE_URL: postgresql://demo:demo-only@postgres:5432/ingestion
+      REDIS_URL: redis://redis:6379/0
+      FOOTBALL_API_KEY: demo
+      FOOTBALL_API_BASE_URL: http://mock-football-api:8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mock-football-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8001/health')"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+
+  platform:
+    build: ./platform
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://demo:demo-only@postgres:5432/platform
+      REDIS_URL: redis://redis:6379/1
+      SECRET_KEY: demo-signing-key-not-for-production
+      REFRESH_SECRET_KEY: demo-refresh-key-not-for-production
+      FOOTBALL_API_KEY: demo
+      FOOTBALL_TOOLS_API_BASE_URL: http://mock-football-api:8080/v3
+      # Set these in .env to use a real LLM instead of the mock.
+      OPENROUTER_API_URL: ${OPENROUTER_API_URL:-http://mock-llm:8090/v1/chat/completions}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-demo}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-mock}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mock-llm:
+        condition: service_healthy
+      mock-football-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8000/health')"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
