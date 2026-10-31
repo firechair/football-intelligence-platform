@@ -172,8 +172,8 @@ class SecurityService:
     
     def validate_email_format(self, email: str) -> bool:
         """Valida formato email"""
-        pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-        return bool(re.match(pattern, email))
+        pattern = r'^[a-zA-Z0-9._%+-]{1,64}@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        return len(email) <= 254 and bool(re.match(pattern, email))
     
     def validate_username_format(self, username: str) -> Dict[str, Any]:
         """Valida formato username"""
