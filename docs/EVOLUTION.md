@@ -28,7 +28,7 @@ The history does not record why these were replaced. The later services moved to
 | Intent detection | 2025-08-03 | 2025-10-10 | 19 |
 | Alerts and bookmaker analytics | 2025-08-22 | 2025-08-31 | 3 on `alert_engine.py` |
 | Data collection (`ingestion/`) | 2025-09-08 | 2025-12-04 | 198 on `ingestion/app` |
-| Accuracy page (`web/`) | 2025-11-11 | 2025-11-12 | 6 |
+| Accuracy page and its routes (`web/`) | 2025-11-11 | 2025-12-01 | 7 |
 
 Most of the work went into the data collection service, and its commit messages show the difficulties plainly: deployment problems, schema drift between environments, and live-match filters that took many attempts.
 

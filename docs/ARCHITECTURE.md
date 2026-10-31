@@ -66,7 +66,9 @@ flowchart LR
 
 These are left as they were, because fixing them would mean building new features:
 
-- `ingestion` has no authentication. It was meant as an internal service, and it still has an open `POST /api/v1/assets/logo/clear-cache` and a wildcard CORS policy. Do not expose it publicly.
+- `ingestion` has no authentication. It was meant as an internal service, and it still has open write routes (`POST /api/v1/assets/logo/clear-cache`, and `POST /api/v1/accuracy/collect-and-evaluate`, which spends provider calls) and a wildcard CORS policy. Do not expose it publicly.
+- The live fixtures endpoint and one scheduler check call the provider directly, outside the rate-limited client.
+- The client's lock holds through the wait, so requests effectively run one per second, even though its statistics describe a limit of five per second.
 - Predictions come from the data provider. The accuracy page measures the provider, not a model of ours.
 - Intent detection is rule-based: hundreds of regular expressions that are easy to break with a rephrased question.
 - Compliance screening uses keywords and keeps risk scores in memory, so it is a safeguard, not a clinical tool. It covers only the agent path.

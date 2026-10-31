@@ -9,10 +9,12 @@ services:
     volumes:
       - ./demo/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U demo -d ingestion"]
+      # Over TCP: while init-databases.sql runs, the temporary server only listens on the socket.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U demo -d ingestion"]
       interval: 2s
       timeout: 3s
       retries: 30
+      start_period: 5s
 
   redis:
     image: redis:7-alpine

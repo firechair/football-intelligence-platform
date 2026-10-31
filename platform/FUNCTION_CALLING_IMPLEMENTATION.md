@@ -1,3 +1,5 @@
+> **Historical note, added for publication.** This is the design note written in January 2026. Its status line is out of date: the agent was never connected to the product's interface, and the `/api/chat` routes it describes are not in this repository. See [Project status](../README.md#project-status).
+
 # Function Calling Implementation - Complete
 
 **Date:** January 16, 2026

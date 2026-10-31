@@ -1,3 +1,5 @@
+> **Historical note, added for publication.** This is the service's original README, and parts of it overstate what the code does: requests are not retried after a failure, value bet detection was never implemented, and predictions come from the data provider, not from a model. For the current state and how to run it, see the [main README](../README.md).
+
 # FIP Operator
 
 ## 🚀 Project Overview
@@ -58,8 +60,8 @@ ENVIRONMENT=production
 ### Local Development
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/firechair/ingestion.git
-   cd ingestion
+   git clone https://github.com/firechair/football-intelligence-platform.git
+   cd football-intelligence-platform/ingestion
    ```
 
 2. **Install dependencies**
