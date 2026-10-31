@@ -289,11 +289,11 @@ async def get_live_fixtures(
         print(f"[OPERATOR] 📡 Getting live fixtures from API-Football (direct HTTP)...")
 
         import httpx
-        api_key = "REDACTED"
-        url = "https://v3.football.api-sports.io/fixtures?live=all"
+        from app.core.config import settings
+        url = f"{settings.FOOTBALL_API_BASE_URL}/fixtures?live=all"
 
         async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(url, headers={"x-apisports-key": api_key})
+            response = await client.get(url, headers={"x-apisports-key": settings.FOOTBALL_API_KEY})
 
             if response.status_code == 200:
                 data = response.json()
