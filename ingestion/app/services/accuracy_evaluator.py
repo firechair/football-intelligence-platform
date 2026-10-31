@@ -286,7 +286,8 @@ class PredictionAccuracyEvaluator:
                 league_name=fixture_data['league_name'],
                 home_team=fixture_data['home_team'],
                 away_team=fixture_data['away_team'],
-                prediction_collected_at=fixture_data['prediction_collected_at']
+                prediction_collected_at=fixture_data['prediction_collected_at'],
+                evaluated_at=datetime.now()
             )
 
             self.db.add(prediction_accuracy)
