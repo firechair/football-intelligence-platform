@@ -44,19 +44,18 @@ def register_user(user: UserCreate, request: Request, db: Session = Depends(get_
     try:
         logger.info("Registration attempt started")
         
-        # Skip rate limiting temporarily to isolate the issue
         # Rate limiting per registrazione
-        # client_id = security_service.get_client_identifier(request)
-        # rate_key = f"register:{client_id}"
-        
-        # if security_service.is_rate_limited(rate_key, max_attempts=3, window_minutes=60):
-        #     logger.warning(f"Rate limit exceeded for registration from: {client_id}")
-        #     raise HTTPException(
-        #         status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-        #         detail="Too many registration attempts. Try again later."
-        #     )
-        
-        # security_service.record_attempt(rate_key)
+        client_id = security_service.get_client_identifier(request)
+        rate_key = f"register:{client_id}"
+
+        if security_service.is_rate_limited(rate_key, max_attempts=3, window_minutes=60):
+            logger.warning(f"Rate limit exceeded for registration from: {client_id}")
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many registration attempts. Try again later."
+            )
+
+        security_service.record_attempt(rate_key)
         
         # Sanitize input
         logger.info("Sanitizing input...")
@@ -208,150 +207,6 @@ def register_user(user: UserCreate, request: Request, db: Session = Depends(get_
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Registration failed due to server error: {type(e).__name__}"
         )
-
-@router.post("/register-minimal")
-def register_minimal(username: str = Body(...), email: str = Body(...), password: str = Body(...), full_name: str = Body(None)):
-    """Ultra minimal registration that bypasses ALL complex services"""
-    try:
-        import logging
-        logging.basicConfig(level=logging.INFO)
-        logger = logging.getLogger(__name__)
-        
-        logger.info(f"MINIMAL REGISTRATION: Starting with {username}, {email}")
-        
-        # Basic database connection
-        from app.db.session import SessionLocal
-        db = SessionLocal()
-        
-        logger.info("MINIMAL REGISTRATION: Database connected")
-        
-        # Ensure table exists
-        from sqlalchemy import text
-        db.execute(text("""
-            CREATE TABLE IF NOT EXISTS users (
-                id SERIAL PRIMARY KEY,
-                username VARCHAR(50) NOT NULL UNIQUE,
-                email VARCHAR(120) NOT NULL UNIQUE,
-                hashed_password VARCHAR(128) NOT NULL,
-                full_name VARCHAR(120),
-                preferences JSON DEFAULT '{}',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                two_factor_enabled BOOLEAN DEFAULT FALSE,
-                two_factor_secret VARCHAR(255),
-                backup_codes JSON,
-                email_verified BOOLEAN DEFAULT FALSE,
-                email_verification_token VARCHAR(255),
-                email_verification_expires TIMESTAMP,
-                password_reset_token VARCHAR(255),
-                password_reset_expires TIMESTAMP
-            )
-        """))
-        db.commit()
-        
-        logger.info("MINIMAL REGISTRATION: Table ensured")
-        
-        # Check if user exists
-        existing = db.execute(text("""
-            SELECT id FROM users WHERE username = :username OR email = :email LIMIT 1
-        """), {"username": username, "email": email}).fetchone()
-        
-        if existing:
-            return {"status": "error", "message": "User already exists"}
-        
-        logger.info("MINIMAL REGISTRATION: User check passed")
-        
-        # Hash password with basic bcrypt
-        from passlib.context import CryptContext
-        pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-        hashed_password = pwd_context.hash(password)
-        
-        logger.info("MINIMAL REGISTRATION: Password hashed")
-        
-        # First check what columns actually exist in the users table
-        schema_result = db.execute(text("""
-            SELECT column_name FROM information_schema.columns 
-            WHERE table_name = 'users' AND table_schema = 'public'
-        """))
-        existing_columns = [row.column_name for row in schema_result.fetchall()]
-        logger.info(f"MINIMAL REGISTRATION: Existing columns: {existing_columns}")
-        
-        # Build safe INSERT and RETURNING clauses with only existing columns
-        insert_columns = ['username', 'email', 'hashed_password']
-        insert_values = [':username', ':email', ':hashed_password']
-        
-        if 'full_name' in existing_columns:
-            insert_columns.append('full_name')
-            insert_values.append(':full_name')
-        
-        if 'preferences' in existing_columns:
-            insert_columns.append('preferences')
-            insert_values.append("'{}'")
-        
-        # Build safe RETURNING clause
-        return_columns = ['id', 'username', 'email']
-        if 'full_name' in existing_columns:
-            return_columns.append('full_name')
-        if 'created_at' in existing_columns:
-            return_columns.append('created_at')
-        if 'email_verified' in existing_columns:
-            return_columns.append('email_verified')
-        if 'two_factor_enabled' in existing_columns:
-            return_columns.append('two_factor_enabled')
-        
-        # Build dynamic SQL
-        insert_sql = f"""
-            INSERT INTO users ({', '.join(insert_columns)})
-            VALUES ({', '.join(insert_values)})
-            RETURNING {', '.join(return_columns)}
-        """
-        
-        logger.info(f"MINIMAL REGISTRATION: Using SQL: {insert_sql}")
-        
-        # Insert user with safe parameters
-        params = {
-            "username": username, 
-            "email": email, 
-            "hashed_password": hashed_password
-        }
-        if 'full_name' in existing_columns:
-            params["full_name"] = full_name or "User"
-        
-        result = db.execute(text(insert_sql), params)
-        
-        db.commit()
-        new_user = result.fetchone()
-        db.close()
-        
-        logger.info(f"MINIMAL REGISTRATION: User {username} created with ID {new_user.id}")
-        
-        # Build response with only available columns
-        user_response = {
-            "id": new_user.id,
-            "username": new_user.username,
-            "email": new_user.email
-        }
-        
-        # Add optional fields if they exist
-        if hasattr(new_user, 'full_name') and new_user.full_name is not None:
-            user_response["full_name"] = new_user.full_name
-        if hasattr(new_user, 'created_at') and new_user.created_at is not None:
-            user_response["created_at"] = str(new_user.created_at)
-        if hasattr(new_user, 'email_verified') and new_user.email_verified is not None:
-            user_response["email_verified"] = new_user.email_verified
-        if hasattr(new_user, 'two_factor_enabled') and new_user.two_factor_enabled is not None:
-            user_response["two_factor_enabled"] = new_user.two_factor_enabled
-        
-        return {
-            "status": "success",
-            "message": "Registration successful",
-            "user": user_response
-        }
-        
-    except Exception as e:
-        import traceback
-        logger.error(f"MINIMAL REGISTRATION ERROR: {type(e).__name__}: {str(e)}")
-        logger.error(f"MINIMAL REGISTRATION TRACEBACK: {traceback.format_exc()}")
-        return {"status": "error", "error": str(e), "type": type(e).__name__}
 
 @router.post("/login")
 def login_user(form_data: OAuth2PasswordRequestForm = Depends(), request: Request = None, db: Session = Depends(get_db)):
