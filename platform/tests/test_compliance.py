@@ -18,6 +18,12 @@ def service():
         "The ball in the box was offside",
         "Dimmi tutto su Inter e Milan",
         "Quante partite ci sono ogni giorno?",
+        "All in all, how did Inter do this season?",
+        "L'ultimo tentativo di rimonta del Milan è fallito?",
+        "Non posso perdere la partita di stasera, a che ora inizia?",
+        "Giocano tutto il campionato in casa?",
+        "Sono disperato, l'Inter ha perso ancora",
+        "Devo recuperare la partita di ieri, chi ha segnato?",
     ],
 )
 async def test_innocent_messages_are_not_blocked(service, message):
@@ -31,7 +37,12 @@ async def test_innocent_messages_are_not_blocked(service, message):
         "Devo scommettere tutto quello che ho per recuperare le perdite di ieri",
         "Non posso smettere di giocare",
         "Ho debiti di gioco e devo recuperare",
-        "Sono all in sulla finale",
+        "Vado all in sulla finale",
+        "Mi gioco la casa sul Milan",
+        "Voglio giocarmi lo stipendio sull'Inter",
+        "Ho perso 5000 euro oggi, come li recupero stasera?",
+        "Sono dipendente dalle scommesse",
+        "Sono disperato per i soldi persi al gioco",
     ],
 )
 async def test_risky_messages_are_blocked(service, message):
@@ -64,6 +75,7 @@ async def test_self_harm_message_gets_crisis_reply(service, message):
     assert result["intervention_type"] == "crisis"
     assert "112" in result["intervention_message"]
     assert "Non posso continuare" not in result["intervention_message"]
+    assert result["help_resources"]
 
 
 def test_docstring_claims_only_what_the_code_does():

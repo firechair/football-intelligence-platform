@@ -38,9 +38,10 @@ class ComplianceService:
         # Addiction risk patterns (Italian and English)
         self.addiction_patterns = [
             # Financial distress
-            r"devo\s+recuperare",  # "I need to recover"
+            r"devo\s+recuperare(?!\s+la\s+partita)",  # "I need to recover"
             r"recuperare\s+(le\s+)?perdite",  # "recover the losses"
-            r"ultimo\s+tentativo",  # "last attempt"
+            r"ho\s+perso\s+.*\brecuper",  # "I lost ..., how do I get it back"
+            r"ultimo\s+tentativo\s+per\s+(recuperare|rifarmi|vincere)",  # "last attempt to recover"
             r"senza\s+soldi",  # "no money"
             r"debiti?\s+(di|per|col|con)\s+(il\s+)?(gioco|scommess|giocare)",  # "gambling debts"
             r"prestito\s+per\s+(giocare|scommettere)",  # "loan to gamble"
@@ -48,17 +49,19 @@ class ComplianceService:
             r"chase.*loss",
 
             # Emotional distress
-            r"disperato",  # "desperate"
+            r"disperat[oa]\b.*(gioc|scommess|debit|soldi)",  # "desperate" about gambling or money
             r"non\s+posso\s+smettere",  # "can't stop"
-            r"dipenden[tz]a",  # "addiction"
+            r"(dipenden[tz]a\s+(da|dal|dalle|dalla)|dipendente\s+(da|dal|dalle|dalla))\s*(il\s+|le\s+)?(gioco|scommess)",  # "addicted to gambling"
             r"aiut(o|atemi)\s+(con|per|a\s+smettere)\s+(il\s+|di\s+)?(gioco|giocare|scommesse|scommettere)",  # "help with gambling"
             r"mi\s+sono\s+rovinato",  # "I've ruined myself"
 
             # Excessive betting
-            r"(scommett|punt|gioc)\w*\s+tutto",  # "bet everything"
-            r"\ball[\s-]?in\b",
-            r"ultima\s+possibilità",  # "last chance"
-            r"non\s+posso\s+perdere",  # "can't lose"
+            r"(scommett|punt)\w*\s+tutto",  # "bet everything"
+            r"gioc\w*\s+tutto\s+(quello|ciò|i\s+soldi|lo\s+stipendio)",  # "gamble everything I have"
+            r"(gioc\w*|scommett\w*|punt\w*)\s+(la\s+casa|lo\s+stipendio|i\s+risparmi|la\s+macchina)",  # "gamble the house, the salary"
+            r"\b(vado|sono|punto|metto|faccio)\s+all[\s-]?in\b",  # "I'm going all in"
+            r"ultima\s+possibilità\s+per\s+(recuperare|rifarmi|vincere)",  # "last chance to recover"
+            r"non\s+posso\s+perdere\s+(questa\s+|la\s+)?(scommessa|puntata|schedina)",  # "this bet can't lose"
         ]
 
         # Thoughts of self-harm take priority over every other pattern
@@ -154,6 +157,7 @@ class ComplianceService:
                 result["risk_level"] = "critical"
                 result["intervention_type"] = "crisis"
                 result["intervention_message"] = self._get_intervention_message("crisis")
+                result["help_resources"] = self.help_resources["it"]
                 result["compliance_notes"].append(f"Crisis pattern matched: {crisis_match}")
                 await self._log_intervention(user_id, "crisis", crisis_match)
                 logger.warning(f"[COMPLIANCE] Crisis message from user {user_id}")
