@@ -457,9 +457,9 @@ def refresh_token(token_data: TokenRefresh, request: Request = None, db: Session
     # Update session with new refresh token JTI if session exists
     if current_session and jti:
         # Get new JTI from the new refresh token
-        import jwt
+        from jose import jwt
         try:
-            new_refresh_payload = jwt.decode(new_tokens["refresh_token"], options={"verify_signature": False})
+            new_refresh_payload = jwt.get_unverified_claims(new_tokens["refresh_token"])
             new_jti = new_refresh_payload.get("jti")
             if new_jti:
                 session_manager.update_session_jti(db, current_session.session_id, new_jti)
