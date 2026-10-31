@@ -165,11 +165,11 @@ class IntentDetector:
             IntentType.ODDS_QUERY: [
                 {
                     "patterns": [
-                        r"quota\s+(?:per|di|del)\s+([\w\s]+)",
+                        r"quot[ae]\s+(?:per|di|del)\s+([\w\s]+)",
                         r"odds\s+(?:per|di|del)\s+([\w\s]+)",
                         r"quanto\s+(?:paga|rende)\s+([\w\s]+)",
                         r"che\s+quota\s+(?:ha|ha\s+)?([\w\s]+)",
-                        r"quota\s+([\w\s]+)"
+                        r"quot[ae]\s+([\w\s]+)"
                     ],
                     "entities": ["team_or_match"],
                     "confidence": ConfidenceLevel.MEDIUM
@@ -344,7 +344,7 @@ class IntentDetector:
                         r"(?:infortuni|giocatori)\s+(?:della\s+)?(?:squadra|team)\s+([\w\s]+)",
                         # Pattern per squadre specifiche (escludi pattern con vs/contro)
                         r"(?:parlami|parla)\s+(?:di\s+)?([A-Z][\w\s]+)(?:\s+(?:squadra|team))?(?!\s+(?:vs|contro))",
-                        r"(?:mostrami|mostra)\s+(?:la\s+)?([A-Z][\w\s]+)(?:\s+(?:squadra|team))?(?!\s+(?:vs|contro))",
+                        r"(?:mostrami|mostra)\s+(?!(?:le\s+|il\s+|i\s+)?(?:quot|grafic|prediz|pronostic|classific|partit))(?:la\s+)?([A-Z][\w\s]+)(?:\s+(?:squadra|team))?(?!\s+(?:vs|contro))",
                         r"(?:statistiche|stats)\s+(?:di|della)\s+([A-Z][\w\s]+)",
                         r"(?:analisi|analizza)\s+([A-Z][\w\s]+)",
                         # Pattern per "squadra X" senza verbo specifico
