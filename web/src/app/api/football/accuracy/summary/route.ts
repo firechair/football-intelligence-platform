@@ -16,6 +16,7 @@ export async function GET(request: NextRequest) {
 
     const response = await fetch(endpoint, {
       method: 'GET',
+      cache: 'no-store',
       headers: {
         'Content-Type': 'application/json',
       },
