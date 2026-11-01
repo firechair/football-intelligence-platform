@@ -100,6 +100,7 @@ Making the code run from a clean clone, with tests, exposed bugs that the origin
 - **Bookmaker rankings always failed** on real data, and the cache did nothing once Redis was connected.
 - **The compliance filter made harmful replies worse**, and a message about suicide received only gambling numbers.
 - **Concurrent API requests started in bursts**, past the provider's limit.
+- **The accuracy page stayed at zero** if opened before any data arrived, because the web server kept its first answer. Only watching the page in a browser showed it: the API checks passed.
 
 The 81 account tests inherited from the project had also gone stale: 32 of them failed or errored on the first run. Their expectations now state what the code does on purpose, and the other 64 platform tests are new.
 
