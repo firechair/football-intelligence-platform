@@ -112,6 +112,7 @@ async def test_results_endpoint_lists_evaluated_matches(client, db_session):
     assert (row["home_team"], row["away_team"], row["league_name"]) == ("Inter", "AC Milan", "Serie A")
     assert row["actual_score"] == "2-0"
     assert row["predicted_winner"] == "Inter"
+    assert row["predicted_win_or_draw"] is True
     assert row["winner_accuracy"] is True
 
 

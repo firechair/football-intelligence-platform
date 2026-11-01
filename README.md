@@ -55,7 +55,7 @@ cd ingestion && pytest -q                                      # 24 tests
 docker compose run --rm ingestion pytest -m integration -q     # 3 tests against Postgres and the mock API
 cd platform && pytest -q --no-cov                              # 145 tests
 cd demo && pytest -q                                           # 15 tests
-cd web && npx vitest run                                       # 11 tests
+cd web && npx vitest run                                       # 14 tests
 ```
 
 ## What each module shows

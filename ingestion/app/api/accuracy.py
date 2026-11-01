@@ -42,6 +42,7 @@ def get_accuracy_results(
                 "actual_score": actual_score,
                 "actual_winner": actual_winner or "N/A",
                 "predicted_winner": pred.predicted_winner_name or "N/A",
+                "predicted_win_or_draw": pred.predicted_win_or_draw,
                 "winner_accuracy": pred.winner_accuracy,
                 "goals_accuracy": pred.goals_accuracy,
                 "winner_score": float(pred.winner_score) if pred.winner_score else 0.0,

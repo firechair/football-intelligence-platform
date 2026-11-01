@@ -28,6 +28,7 @@ export interface AccuracyResult {
   actual_score: string;
   actual_winner: string;
   predicted_winner: string;
+  predicted_win_or_draw: boolean | null;
   winner_accuracy: boolean;
   goals_accuracy: boolean;
   winner_score: number;
@@ -70,4 +71,10 @@ export function toSummary(raw: unknown): AccuracySummary {
 export function toResults(raw: unknown): AccuracyResult[] {
   const { results } = asObject(raw);
   return Array.isArray(results) ? (results as AccuracyResult[]) : [];
+}
+
+// A win-or-draw prediction is correct on a draw too, so the page has to say which kind it was.
+export function predictedOutcome(result: Pick<AccuracyResult, 'predicted_winner' | 'predicted_win_or_draw'>): string {
+  const hasTeam = result.predicted_winner !== 'N/A';
+  return result.predicted_win_or_draw && hasTeam ? `${result.predicted_winner} o pareggio` : result.predicted_winner;
 }

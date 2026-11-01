@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { toResults, toSummary } from './accuracyAdapter';
+import { predictedOutcome, toResults, toSummary } from './accuracyAdapter';
 
 const evaluated = {
   success: true,
@@ -78,5 +78,19 @@ describe('toResults', () => {
 
   it.each([{}, null, { results: 'x' }, { success: false, results: [] }])('returns no rows for %s', (raw) => {
     expect(toResults(raw)).toEqual([]);
+  });
+});
+
+describe('predictedOutcome', () => {
+  it('shows a win-or-draw prediction as such, so a draw marked correct reads as correct', () => {
+    expect(predictedOutcome({ predicted_winner: 'AS Roma', predicted_win_or_draw: true })).toBe('AS Roma o pareggio');
+  });
+
+  it('shows a plain winner prediction as the team', () => {
+    expect(predictedOutcome({ predicted_winner: 'Torino', predicted_win_or_draw: false })).toBe('Torino');
+  });
+
+  it('does not add the draw to a missing prediction', () => {
+    expect(predictedOutcome({ predicted_winner: 'N/A', predicted_win_or_draw: true })).toBe('N/A');
   });
 });

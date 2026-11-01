@@ -18,7 +18,7 @@ import {
   Goal
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { AccuracyResult, AccuracySummary, toResults, toSummary } from '@/lib/accuracyAdapter';
+import { AccuracyResult, AccuracySummary, predictedOutcome, toResults, toSummary } from '@/lib/accuracyAdapter';
 
 export default function AccuracyPage() {
   const [summary, setSummary] = useState<AccuracySummary | null>(null);
@@ -253,7 +253,7 @@ export default function AccuracyPage() {
 
                         <div>
                           <span className="text-muted-foreground">Predetto:</span>
-                          <div className="font-medium">{result.predicted_winner}</div>
+                          <div className="font-medium">{predictedOutcome(result)}</div>
                         </div>
 
                         <div className="flex items-center gap-2">
