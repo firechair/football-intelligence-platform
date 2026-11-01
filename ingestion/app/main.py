@@ -128,8 +128,8 @@ except Exception as e:
 
 # Create FastAPI app - PRODUCTION VERSION
 app = FastAPI(
-    title="FIP Production - Auto Schema",
-    description="Production version with automatic schema creation",
+    title="Football data ingestion",
+    description="Collects fixtures, predictions and odds, and evaluates prediction accuracy.",
     version="2.0.1"
 )
 
