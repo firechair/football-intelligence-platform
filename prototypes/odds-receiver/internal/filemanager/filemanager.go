@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/firechair/odds-receiver/internal/logging"
@@ -41,16 +42,20 @@ func NewFileManager(baseDir string, logger logging.Logger) (*FileManager, error)
 	}, nil
 }
 
+// fileSeq makes names unique: pushes received in the same millisecond used to get the same name.
+var fileSeq atomic.Uint64
+
+func uniqueFileName(isGzipped bool) string {
+	name := fmt.Sprintf("odds_%s_%06d.xml", time.Now().Format("20060102-150405.000"), fileSeq.Add(1))
+	if isGzipped {
+		return name + ".gz"
+	}
+	return name
+}
+
 // SaveFile saves the received data to a file and returns the file path
 func (fm *FileManager) SaveFile(data io.Reader, isGzipped bool) (string, error) {
-	// Generate a unique filename with timestamp
-	timestamp := time.Now().Format("20060102-150405.000")
-	var filename string
-	if isGzipped {
-		filename = fmt.Sprintf("odds_%s.xml.gz", timestamp)
-	} else {
-		filename = fmt.Sprintf("odds_%s.xml", timestamp)
-	}
+	filename := uniqueFileName(isGzipped)
 
 	filePath := filepath.Join(fm.baseDir, filename)
 
@@ -230,14 +235,7 @@ func (fm *FileManager) GetFileStats() (map[string]int, error) {
 
 // SaveData saves the provided data to a file and returns the file path
 func (fm *FileManager) SaveData(data []byte, isGzipped bool) (string, error) {
-	// Generate a unique filename with timestamp
-	timestamp := time.Now().Format("20060102-150405.000")
-	var filename string
-	if isGzipped {
-		filename = fmt.Sprintf("odds_%s.xml.gz", timestamp)
-	} else {
-		filename = fmt.Sprintf("odds_%s.xml", timestamp)
-	}
+	filename := uniqueFileName(isGzipped)
 
 	filePath := filepath.Join(fm.baseDir, filename)
 

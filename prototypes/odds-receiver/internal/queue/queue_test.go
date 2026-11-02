@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/firechair/odds-receiver/internal/models"
@@ -44,6 +45,19 @@ func TestAStoredOperationLeavesTheQueue(t *testing.T) {
 	})
 	if len(stored) != 1 || stored[0] != "7001" || depth(t, q) != 0 {
 		t.Fatalf("stored %v, %d left", stored, depth(t, q))
+	}
+}
+
+// A push with many offers queues them in a tight loop, often within one millisecond.
+func TestOperationsQueuedInTheSameMillisecondAreAllKept(t *testing.T) {
+	q := newQueue(t, t.TempDir())
+	for i := 0; i < 50; i++ {
+		if err := q.QueueStoreOperation(&models.OddsUpdate{BettingOfferID: fmt.Sprint(i)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n := depth(t, q); n != 50 {
+		t.Fatalf("%d of 50 operations kept", n)
 	}
 }
 

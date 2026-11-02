@@ -37,6 +37,7 @@ type Queue struct {
 	processChan chan struct{}
 	shutdownCh  chan struct{}
 	wg          sync.WaitGroup
+	seq         uint64 // operations queued in the same millisecond used to get the same file name
 }
 
 // NewQueue creates a new queue
@@ -91,9 +92,10 @@ func (q *Queue) Enqueue(op *QueuedOperation) error {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
 
-	// Generate a unique filename with timestamp
+	// Generate a unique filename with timestamp and sequence number
+	q.seq++
 	timestamp := time.Now().Format("20060102-150405.000")
-	filename := fmt.Sprintf("op_%s_%s.json", string(op.Type), timestamp)
+	filename := fmt.Sprintf("op_%s_%s_%06d.json", string(op.Type), timestamp, q.seq)
 	filePath := filepath.Join(q.queueDir, filename)
 
 	// Serialize the operation to JSON
