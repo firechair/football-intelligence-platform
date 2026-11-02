@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/firechair/odds-receiver/internal/models"
@@ -54,6 +55,29 @@ func TestAnOlderVersionOfAnOutcomeIsIgnored(t *testing.T) {
 	if got, _ := s.GetOutcome("5001"); got.OutcomeTypeFK != 1 {
 		t.Fatalf("kept version %+v", got)
 	}
+}
+
+// The autosave runs every five minutes while pushes keep arriving. Run with -race.
+func TestSavingWhileOutcomesArriveIsSafe(t *testing.T) {
+	s := newStore(t, t.TempDir())
+	defer s.Shutdown()
+	s.StoreOutcome(homeWin)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 2000; i++ {
+			o := homeWin
+			o.ID = fmt.Sprint(i)
+			s.StoreOutcome(o)
+			s.StorePendingOffer(models.BettingOffer{ID: fmt.Sprint(i), OutcomeFK: "waiting-" + o.ID}, "", "", "", "")
+		}
+	}()
+	for i := 0; i < 50; i++ {
+		if err := s.SaveToDisk(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	<-done
 }
 
 func TestOutcomesAndPendingOffersSurviveARestart(t *testing.T) {

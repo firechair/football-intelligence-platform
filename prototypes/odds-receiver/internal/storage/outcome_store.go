@@ -221,15 +221,14 @@ func (s *OutcomeStore) GetOutcomeCount() int {
 
 // SaveToDisk persists the outcome cache to disk
 func (s *OutcomeStore) SaveToDisk() error {
-	// First save outcomes
+	// First save outcomes. Marshal under the lock: pushes keep writing to these maps.
 	s.cacheMutex.RLock()
-	if len(s.outcomeCache) == 0 {
+	outcomeCount, providerCount := len(s.outcomeCache), len(s.providerCache)
+	if outcomeCount == 0 {
 		s.cacheMutex.RUnlock()
 		return nil
 	}
-
-	// Create a snapshot of the current data
-	data := struct {
+	jsonData, err := json.Marshal(struct {
 		Outcomes  map[string]models.Outcome `json:"outcomes"`
 		Providers map[string]string         `json:"providers"`
 		Timestamp time.Time                 `json:"timestamp"`
@@ -237,11 +236,8 @@ func (s *OutcomeStore) SaveToDisk() error {
 		Outcomes:  s.outcomeCache,
 		Providers: s.providerCache,
 		Timestamp: time.Now(),
-	}
+	})
 	s.cacheMutex.RUnlock()
-
-	// Marshal to JSON
-	jsonData, err := json.Marshal(data)
 	if err != nil {
 		return fmt.Errorf("failed to marshal outcome data: %w", err)
 	}
@@ -266,18 +262,19 @@ func (s *OutcomeStore) SaveToDisk() error {
 		pendingOffersCount += len(offers)
 	}
 
+	var pendingJSON []byte
 	if pendingOffersCount > 0 {
-		pendingData := struct {
+		pendingJSON, err = json.Marshal(struct {
 			PendingOffers map[string][]PendingOffer `json:"pending_offers"`
 			Timestamp     time.Time                 `json:"timestamp"`
 		}{
 			PendingOffers: s.pendingOffers,
 			Timestamp:     time.Now(),
-		}
-		s.pendingOffersMutex.RUnlock()
+		})
+	}
+	s.pendingOffersMutex.RUnlock()
 
-		// Marshal pending offers to JSON
-		pendingJSON, err := json.Marshal(pendingData)
+	if pendingOffersCount > 0 {
 		if err != nil {
 			return fmt.Errorf("failed to marshal pending offers data: %w", err)
 		}
@@ -294,12 +291,10 @@ func (s *OutcomeStore) SaveToDisk() error {
 		if err := os.Rename(tempPendingPath, pendingPath); err != nil {
 			return fmt.Errorf("failed to rename temp pending offers file: %w", err)
 		}
-	} else {
-		s.pendingOffersMutex.RUnlock()
 	}
 
 	s.logger.Info("Saved %d outcomes, %d providers, and %d pending offers to disk",
-		len(s.outcomeCache), len(s.providerCache), pendingOffersCount)
+		outcomeCount, providerCount, pendingOffersCount)
 	s.lastSave = time.Now()
 
 	return nil
