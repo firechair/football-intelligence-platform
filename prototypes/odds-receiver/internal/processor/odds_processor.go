@@ -58,6 +58,12 @@ func (p *OddsProcessor) handleReadyPendingOffer(pendingOffer storage.PendingOffe
 	// Set up required info for processing this betting offer
 	now := time.Now()
 
+	// The outcome names the provider's event; the coupon key only gives a slug like "inter-milan"
+	eventID := pendingOffer.EventID
+	if outcome.Object == "event" && outcome.ObjectFK != "" {
+		eventID = outcome.ObjectFK
+	}
+
 	// Determine if this is a live odds update
 	isLiveOdds := pendingOffer.Offer.IsLive == "yes"
 
@@ -84,7 +90,7 @@ func (p *OddsProcessor) handleReadyPendingOffer(pendingOffer storage.PendingOffe
 
 	// Create odds update
 	update := &models.OddsUpdate{
-		EventID:            pendingOffer.EventID,
+		EventID:            eventID,
 		EventName:          pendingOffer.EventName,
 		EventStartDate:     pendingOffer.EventStartDate,
 		OutcomeID:          outcome.ID,
@@ -305,13 +311,6 @@ func (p *OddsProcessor) Process(data *parser.OddsData) error {
 			}
 		}
 
-		// Skip if we still don't have an eventID
-		if eventID == "" {
-			p.logger.Warn("Skipping betting offer %s: could not determine event ID", offer.ID)
-			skipped++
-			continue
-		}
-
 		// Find the associated outcome
 		var outcomeInfo models.Outcome
 
@@ -357,17 +356,25 @@ func (p *OddsProcessor) Process(data *parser.OddsData) error {
 				if event, exists := eventDetails[eventID]; exists {
 					eventName = event.Name
 					eventStartDate = event.StartDate
-				} else if matchId, name, _ := extractEventFromCouponKey(offer.CouponKey); matchId == eventID {
+				} else if matchId, name, _ := extractEventFromCouponKey(offer.CouponKey); matchId != "" && matchId == eventID {
 					eventName = name
 					// Use current time as an approximation for start date if not available
 					eventStartDate = time.Now().Format("2006-01-02 15:04:05")
 				}
 
-				// Store the betting offer as pending
+				// Store the betting offer as pending, even without an event ID: the outcome will give it
 				p.outcomeStore.StorePendingOffer(offer, eventID, eventName, eventStartDate, providerName)
 				queuedAsPending++
 				continue
 			}
+		}
+
+		// Skip if we still don't have an eventID. Checked after the outcome lookup, so that an offer
+		// whose outcome has not arrived yet waits for it instead of being dropped.
+		if eventID == "" {
+			p.logger.Warn("Skipping betting offer %s: could not determine event ID", offer.ID)
+			skipped++
+			continue
 		}
 
 		// Find provider name

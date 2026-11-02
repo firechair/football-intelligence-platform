@@ -105,6 +105,38 @@ func TestDeletedInactiveAndUntrackedOffersAreSkipped(t *testing.T) {
 	}
 }
 
+func TestAnOfferWithoutACouponKeyAlsoWaitsForItsOutcome(t *testing.T) {
+	p, store, outcomes := newProcessor(t)
+	if err := p.Process(&parser.OddsData{BettingOffers: []models.BettingOffer{offer("7001", "5001", "16")}}); err != nil {
+		t.Fatal(err)
+	}
+	if n := outcomes.GetPendingOffersCount(); n != 1 {
+		t.Fatalf("%d offers waiting, want 1", n)
+	}
+	if err := p.Process(&parser.OddsData{Outcomes: []models.Outcome{homeWin}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := store.stored(); len(got) != 1 || got[0].EventID != "9001" {
+		t.Fatalf("stored %d updates", len(got))
+	}
+}
+
+// The coupon key gives a slug such as "inter-milan"; the outcome gives the provider's event ID.
+func TestAReleasedOfferIsFiledUnderTheEventOfItsOutcome(t *testing.T) {
+	p, store, _ := newProcessor(t)
+	early := offer("7001", "5001", "16")
+	early.CouponKey = "/evento/calcio/ita-serie-a/inter-milan"
+	if err := p.Process(&parser.OddsData{BettingOffers: []models.BettingOffer{early}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Process(&parser.OddsData{Outcomes: []models.Outcome{homeWin}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := store.stored(); len(got) != 1 || got[0].EventID != "9001" {
+		t.Fatalf("stored %d updates, the first under event %q", len(got), got[0].EventID)
+	}
+}
+
 // Pushes arrive in pieces: an offer can come before the outcome it prices.
 func TestAnOfferArrivingBeforeItsOutcomeIsStoredOnceTheOutcomeArrives(t *testing.T) {
 	p, store, outcomes := newProcessor(t)
