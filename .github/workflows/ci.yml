@@ -82,6 +82,19 @@ jobs:
       - run: npx tsc --noEmit
       - run: npm run build
 
+  odds-receiver:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: prototypes/odds-receiver
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: prototypes/odds-receiver/go.mod
+      - run: go vet ./...
+      - run: go test -race ./...
+
   compose:
     runs-on: ubuntu-latest
     steps:
