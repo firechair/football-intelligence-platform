@@ -290,27 +290,8 @@ func (h *Handler) processFile(filePath string, isGzipped bool) {
 		return
 	}
 
-	// Check if any betting offer is from a target bookmaker
-	hasTargetBookmaker := false
-	for _, offer := range data.BettingOffers {
-		if h.processor.IsTargetBookmaker(offer.OddsProviderFK) {
-			hasTargetBookmaker = true
-			break
-		}
-	}
-
-	if !hasTargetBookmaker && len(data.BettingOffers) > 0 {
-		h.logger.Info("Skipping file %s - contains no betting offers from target bookmakers", filePath)
-
-		// Mark as processed to avoid reprocessing
-		if err := h.fileManager.MarkFileAsParsed(filePath); err != nil {
-			h.logger.Error("Error marking non-target file as parsed %s: %v", filePath, err)
-		} else {
-			h.logger.Info("Marked non-target file as parsed: %s", filePath)
-		}
-		return
-	}
-
+	// No early skip for files without target bookmakers: their outcomes are needed by later offers.
+	// Process stores the outcomes first and filters the offers by bookmaker itself.
 	if err = h.processor.Process(data); err != nil {
 		h.logger.Error("Error processing odds data from %s: %v", filePath, err)
 		// Don't mark as processed if database upload failed

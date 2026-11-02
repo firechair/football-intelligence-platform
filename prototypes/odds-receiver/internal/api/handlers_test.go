@@ -135,6 +135,23 @@ func TestAGzippedPushIsAcknowledgedAndThenStored(t *testing.T) {
 	}
 }
 
+// The outcome can arrive in a push whose offers all come from bookmakers nobody tracks.
+func TestOutcomesInAPushWithoutTrackedOffersAreKept(t *testing.T) {
+	r := newReceiver(t)
+	untracked := `<bettingoffer id="7009" outcomeFK="5001" odds_providerFK="99" odds="2.00" active="yes"/>`
+	for _, doc := range []string{push(match, homeWin, untracked), push("", "", tracked)} {
+		path, err := r.files.SaveData([]byte(doc), false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.handler.ProcessPendingFile(path, false)
+	}
+	waitFor(t, "the tracked offer", func() bool { return len(r.store.stored()) == 1 })
+	if u := r.store.stored()[0]; u.BettingOfferID != "7001" || u.EventID != "9001" {
+		t.Errorf("stored %+v", u)
+	}
+}
+
 func TestAPlainPushGetsTheReplyThePHPReceiverGave(t *testing.T) {
 	r := newReceiver(t)
 	server := httptest.NewServer(r.handler.Routes())
