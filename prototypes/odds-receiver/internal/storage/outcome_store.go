@@ -222,12 +222,9 @@ func (s *OutcomeStore) GetOutcomeCount() int {
 // SaveToDisk persists the outcome cache to disk
 func (s *OutcomeStore) SaveToDisk() error {
 	// First save outcomes. Marshal under the lock: pushes keep writing to these maps.
+	// Empty maps are written too, or a deleted outcome or a released offer comes back on restart.
 	s.cacheMutex.RLock()
 	outcomeCount, providerCount := len(s.outcomeCache), len(s.providerCache)
-	if outcomeCount == 0 {
-		s.cacheMutex.RUnlock()
-		return nil
-	}
 	jsonData, err := json.Marshal(struct {
 		Outcomes  map[string]models.Outcome `json:"outcomes"`
 		Providers map[string]string         `json:"providers"`
@@ -262,35 +259,29 @@ func (s *OutcomeStore) SaveToDisk() error {
 		pendingOffersCount += len(offers)
 	}
 
-	var pendingJSON []byte
-	if pendingOffersCount > 0 {
-		pendingJSON, err = json.Marshal(struct {
-			PendingOffers map[string][]PendingOffer `json:"pending_offers"`
-			Timestamp     time.Time                 `json:"timestamp"`
-		}{
-			PendingOffers: s.pendingOffers,
-			Timestamp:     time.Now(),
-		})
-	}
+	pendingJSON, err := json.Marshal(struct {
+		PendingOffers map[string][]PendingOffer `json:"pending_offers"`
+		Timestamp     time.Time                 `json:"timestamp"`
+	}{
+		PendingOffers: s.pendingOffers,
+		Timestamp:     time.Now(),
+	})
 	s.pendingOffersMutex.RUnlock()
+	if err != nil {
+		return fmt.Errorf("failed to marshal pending offers data: %w", err)
+	}
 
-	if pendingOffersCount > 0 {
-		if err != nil {
-			return fmt.Errorf("failed to marshal pending offers data: %w", err)
-		}
+	// Write pending offers to file
+	pendingPath := filepath.Join(s.storeDir, "pending_offers.json")
+	tempPendingPath := pendingPath + ".tmp"
 
-		// Write pending offers to file
-		pendingPath := filepath.Join(s.storeDir, "pending_offers.json")
-		tempPendingPath := pendingPath + ".tmp"
+	if err := os.WriteFile(tempPendingPath, pendingJSON, 0644); err != nil {
+		return fmt.Errorf("failed to write pending offers to temp file: %w", err)
+	}
 
-		if err := os.WriteFile(tempPendingPath, pendingJSON, 0644); err != nil {
-			return fmt.Errorf("failed to write pending offers to temp file: %w", err)
-		}
-
-		// Atomic rename
-		if err := os.Rename(tempPendingPath, pendingPath); err != nil {
-			return fmt.Errorf("failed to rename temp pending offers file: %w", err)
-		}
+	// Atomic rename
+	if err := os.Rename(tempPendingPath, pendingPath); err != nil {
+		return fmt.Errorf("failed to rename temp pending offers file: %w", err)
 	}
 
 	s.logger.Info("Saved %d outcomes, %d providers, and %d pending offers to disk",

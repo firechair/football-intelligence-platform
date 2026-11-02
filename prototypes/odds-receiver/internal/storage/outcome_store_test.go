@@ -80,6 +80,44 @@ func TestSavingWhileOutcomesArriveIsSafe(t *testing.T) {
 	<-done
 }
 
+func TestAReleasedOfferDoesNotComeBackAfterARestart(t *testing.T) {
+	dir := t.TempDir()
+	s := newStore(t, dir)
+	s.SetPendingOfferCallback(func(PendingOffer, models.Outcome) {})
+	s.StoreOutcome(models.Outcome{ID: "5009", Object: "event", ObjectFK: "9002", N: 1})
+	s.StorePendingOffer(models.BettingOffer{ID: "7001", OutcomeFK: "5001"}, "", "", "", "")
+	if err := s.SaveToDisk(); err != nil {
+		t.Fatal(err)
+	}
+	s.StoreOutcome(homeWin)
+	s.Shutdown()
+
+	restarted := newStore(t, dir)
+	defer restarted.Shutdown()
+	if n := restarted.GetPendingOffersCount(); n != 0 {
+		t.Fatalf("%d released offers pending again after restart", n)
+	}
+}
+
+func TestADeletedOutcomeDoesNotComeBackAfterARestart(t *testing.T) {
+	dir := t.TempDir()
+	s := newStore(t, dir)
+	s.StoreOutcome(homeWin)
+	if err := s.SaveToDisk(); err != nil {
+		t.Fatal(err)
+	}
+	deleted := homeWin
+	deleted.Del = "yes"
+	s.StoreOutcome(deleted)
+	s.Shutdown()
+
+	restarted := newStore(t, dir)
+	defer restarted.Shutdown()
+	if _, ok := restarted.GetOutcome("5001"); ok {
+		t.Fatal("deleted outcome is back after restart")
+	}
+}
+
 func TestOutcomesAndPendingOffersSurviveARestart(t *testing.T) {
 	dir := t.TempDir()
 	s := newStore(t, dir)
