@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
@@ -58,6 +59,20 @@ func TestOperationsQueuedInTheSameMillisecondAreAllKept(t *testing.T) {
 	}
 	if n := depth(t, q); n != 50 {
 		t.Fatalf("%d of 50 operations kept", n)
+	}
+}
+
+func TestAFailedOperationWaitsForItsBackoff(t *testing.T) {
+	q := newQueue(t, t.TempDir())
+	if err := q.QueueStoreOperation(&models.OddsUpdate{BettingOfferID: "7001"}); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	failing := func(*QueuedOperation) error { calls++; return errors.New("storage unavailable") }
+	q.processQueue(failing)
+	q.processQueue(failing)
+	if calls != 1 || depth(t, q) != 1 {
+		t.Fatalf("tried %d times within the backoff, %d operations left", calls, depth(t, q))
 	}
 }
 

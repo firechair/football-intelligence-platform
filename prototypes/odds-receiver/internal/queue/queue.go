@@ -27,6 +27,8 @@ type QueuedOperation struct {
 	Data       *models.OddsUpdate `json:"data"`
 	Timestamp  time.Time          `json:"timestamp"`
 	RetryCount int                `json:"retry_count"`
+	// NextAttempt holds the backoff: it was computed before but never waited for.
+	NextAttempt time.Time `json:"next_attempt,omitempty"`
 }
 
 // Queue provides persistent queueing for database operations
@@ -151,6 +153,10 @@ func (q *Queue) processQueue(processor func(op *QueuedOperation) error) {
 			continue
 		}
 
+		if time.Now().Before(op.NextAttempt) {
+			continue
+		}
+
 		// Process the operation
 		err = processor(&op)
 		if err != nil {
@@ -168,29 +174,16 @@ func (q *Queue) processQueue(processor func(op *QueuedOperation) error) {
 				q.logger.Warn("Operation failed, will retry after %v (attempt %d/%d): %v",
 					backoff, op.RetryCount, maxRetries, err)
 
-				// Update the filename to include retry count and backoff time
-				newFilename := fmt.Sprintf("op_%s_%s_retry%d_next%s.json",
-					string(op.Type),
-					op.Timestamp.Format("20060102-150405.000"),
-					op.RetryCount,
-					time.Now().Add(backoff).Format("20060102-150405"))
-				newFilePath := filepath.Join(q.queueDir, newFilename)
-
-				// Re-save with updated retry count and new filename
+				// Re-save in place with the updated retry count and the time of the next attempt
+				op.NextAttempt = time.Now().Add(backoff)
 				updatedData, err := json.Marshal(op)
 				if err != nil {
 					q.logger.Error("Failed to re-marshal operation: %v", err)
 					continue
 				}
 
-				if err := os.WriteFile(newFilePath, updatedData, 0644); err != nil {
+				if err := os.WriteFile(filePath, updatedData, 0644); err != nil {
 					q.logger.Error("Failed to update queue file: %v", err)
-					continue
-				}
-
-				// Remove the old file
-				if err := os.Remove(filePath); err != nil {
-					q.logger.Error("Failed to remove old queue file %s: %v", filePath, err)
 				}
 
 				// Skip further processing
