@@ -10,15 +10,15 @@ The plan itself is not in this repository.
 
 ## January to April 2025: prototypes
 
-Three separate experiments, kept in [`prototypes/`](../prototypes/) as they were:
+Three separate experiments, kept in [`prototypes/`](../prototypes/):
 
 | Prototype | Date | Stack | Note |
 |---|---|---|---|
 | `streamlit-chatbot` | files last modified 2025-04-02 | Streamlit, transformers, LangChain web search | Ran on a Hugging Face Space that no longer exists. Imported as one snapshot commit, because the code was never committed. |
 | `seriea-api` | 2025-01-21 | Flask, boto3, DynamoDB | One commit. |
-| `odds-receiver` | 2025-03-18 | Go, gorilla/mux, DynamoDB | One commit. |
+| `odds-receiver` | 2025-03-18 and 2025-03-20 | Go, gorilla/mux, DynamoDB | My Go rewrite of the PHP receiver that the provider's instructions set up for its push feed. One commit, then a snapshot of the working tree, which was never committed. Fixed and tested in 2026. |
 
-The history does not record why these were replaced. The later services moved to Python and Postgres.
+Streamlit could not show odds as they changed: every attempt at live updates is still in the code, commented out. So collection and display became separate services, described in [CHALLENGES.md](CHALLENGES.md) with the other problems of the time. The history does not record why storage moved from DynamoDB to Postgres.
 
 ## August to December 2025: the product
 
@@ -40,8 +40,8 @@ Accuracy evaluation arrived in November, and its results depended on a schema th
 
 The chat that users saw combined rule-based intent detection, a language model and the Parlant framework. Analyses written at the time recorded responses being truncated to short phrases and concluded that Parlant added limited value over calling the model directly.
 
-The last snapshot (2026-01-16) adds a function-calling orchestrator with four tools and a compliance service. This agent was **never connected to the interface**, so it stayed a prototype. The project stopped before launch.
+The last snapshot (2026-01-16) adds a function-calling orchestrator with four tools and a compliance service. This agent was **never connected to the interface**, so it stayed a prototype. Then the team decided to close the project, before launch.
 
-## October 2026: publication
+## October and November 2026: reopening and publication
 
-Everything after the `history-import` tag: removing unsafe endpoints, fixing bugs, adding mocks and tests. None of it adds product features.
+Everything after the `history-import` tag: removing unsafe endpoints, fixing bugs, adding mocks and tests. None of it adds product features. [REOPENING.md](REOPENING.md) lists, part by part, how far each part had got and what reopening it found.
