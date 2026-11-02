@@ -89,6 +89,22 @@ func TestAnOfferWithAKnownOutcomeIsStored(t *testing.T) {
 	}
 }
 
+// The first commit checked the parse error; the snapshot of 2025-03-20 dropped the check.
+func TestAnUnreadableStartDateDoesNotMakeAnOfferLive(t *testing.T) {
+	p, store, _ := newProcessor(t)
+	future := match
+	future.StartDate = "2099-03-22T20:45:00+01:00"
+	err := p.Process(&parser.OddsData{
+		Events: []models.Event{future}, Outcomes: []models.Outcome{homeWin}, BettingOffers: []models.BettingOffer{offer("7001", "5001", "16")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := store.stored(); len(got) != 1 || got[0].IsLiveOdds {
+		t.Fatalf("a match in 2099 stored as live: %+v", got)
+	}
+}
+
 func TestDeletedInactiveAndUntrackedOffersAreSkipped(t *testing.T) {
 	p, store, _ := newProcessor(t)
 	deleted, inactive := offer("7001", "5001", "16"), offer("7002", "5001", "16")

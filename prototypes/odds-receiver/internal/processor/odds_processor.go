@@ -69,8 +69,9 @@ func (p *OddsProcessor) handleReadyPendingOffer(pendingOffer storage.PendingOffe
 
 	// If we have event start date, check if timestamp is after event start time
 	if pendingOffer.EventStartDate != "" {
-		eventStartTime, _ := time.Parse("2006-01-02 15:04:05", pendingOffer.EventStartDate)
-		if now.After(eventStartTime) {
+		// An unreadable date parses as year 1, which would make every offer live
+		eventStartTime, err := time.Parse("2006-01-02 15:04:05", pendingOffer.EventStartDate)
+		if err == nil && now.After(eventStartTime) {
 			isLiveOdds = true
 		}
 	}
@@ -432,8 +433,9 @@ func (p *OddsProcessor) Process(data *parser.OddsData) error {
 
 		// For more precise detection, check if the timestamp is after event start time
 		if eventStartDate != "" {
-			eventStartTime, _ := time.Parse("2006-01-02 15:04:05", eventStartDate)
-			if now.After(eventStartTime) {
+			// An unreadable date parses as year 1, which would make every offer live
+			eventStartTime, err := time.Parse("2006-01-02 15:04:05", eventStartDate)
+			if err == nil && now.After(eventStartTime) {
 				isLiveOdds = true
 			}
 		}
