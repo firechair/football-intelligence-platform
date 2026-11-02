@@ -1,4 +1,4 @@
-// main.go with file cleanup implementation
+// main.go with file cleanup implementation and worker pool
 package main
 
 import (
@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -34,7 +35,6 @@ func main() {
 	logger.Info("Configuration loaded successfully")
 
 	// Log the filtering configuration
-	logger.Info("Filtering enabled for Serie A (Tournament Stage ID: %s)", cfg.SerieATournamentStageID)
 	logger.Info("Filtering enabled for %d bookmakers: %v", len(cfg.TargetBookmakerIDs), cfg.TargetBookmakerIDs)
 
 	// Initialize metrics
@@ -55,6 +55,14 @@ func main() {
 		os.Exit(1)
 	}
 	logger.Info("DynamoDB storage initialized successfully")
+
+	// Initialize outcome store
+	outcomeStore, err := storage.NewOutcomeStore(cfg.DataDir, logger)
+	if err != nil {
+		logger.Error("Failed to initialize outcome store: %v", err)
+		os.Exit(1)
+	}
+	logger.Info("Outcome store initialized successfully with %d outcomes", outcomeStore.GetOutcomeCount())
 
 	// Initialize queue
 	oddsQueue, err := queue.NewQueue(cfg.QueueDir, logger)
@@ -79,16 +87,39 @@ func main() {
 	oddsProcessor := processor.NewOddsProcessor(
 		store,
 		logger,
-		cfg.SerieATournamentStageID,
 		cfg.TargetBookmakerIDs,
 	)
 	oddsProcessor.SetQueue(oddsQueue)
+	oddsProcessor.SetOutcomeStore(outcomeStore)
 
 	// Create API handlers
 	handler := api.NewHandler(store, logger, fileManager)
 	handler.SetQueue(oddsQueue)
 	// Set the configured processor
 	handler.SetProcessor(oddsProcessor)
+
+	// Define a type for file processing jobs
+	type fileJob struct {
+		path      string
+		isGzipped bool
+	}
+
+	// Create a worker pool with a limited number of workers
+	maxWorkers := 5
+	fileQueue := make(chan fileJob, 100)
+	var workerWg sync.WaitGroup
+
+	// Start worker pool
+	for i := 0; i < maxWorkers; i++ {
+		workerWg.Add(1)
+		go func() {
+			defer workerWg.Done()
+			for job := range fileQueue {
+				handler.ProcessPendingFile(job.path, job.isGzipped)
+			}
+		}()
+	}
+	logger.Info("Started worker pool with %d workers", maxWorkers)
 
 	// Create HTTP server for the API
 	server := &http.Server{
@@ -123,12 +154,12 @@ func main() {
 	processTicker := time.NewTicker(1 * time.Minute)
 
 	// NEW: Set up a periodic task to clean up old parsed files
-	cleanupTicker := time.NewTicker(4 * time.Hour) // Run cleanup every 4 hours
+	cleanupTicker := time.NewTicker(1 * time.Hour) // Run cleanup every 4 hours
 
 	// Create a channel to signal all goroutines to stop
 	stop := make(chan struct{})
 
-	// Process pending files
+	// Process pending files using worker pool
 	go func() {
 		for {
 			select {
@@ -146,13 +177,26 @@ func main() {
 					// Update metrics
 					metricsCollector.SetCustomMetric("pending_files", len(pendingFiles))
 
-					// Process each pending file
+					// Limit the number of files to process at once
+					batchSize := 100
+					if len(pendingFiles) > batchSize {
+						logger.Info("Processing first %d files of %d total", batchSize, len(pendingFiles))
+						pendingFiles = pendingFiles[:batchSize]
+					}
+
+					// Queue each file for processing using the worker pool
 					for _, file := range pendingFiles {
 						// Determine if the file is gzipped
 						isGzipped := len(file) > 3 && file[len(file)-3:] == ".gz"
 
-						// Process the file
-						go handler.ProcessPendingFile(file, isGzipped)
+						// Add to worker queue instead of processing directly
+						select {
+						case fileQueue <- fileJob{path: file, isGzipped: isGzipped}:
+							// Successfully queued
+						default:
+							// Queue is full, log warning
+							logger.Warn("File processing queue is full, skipping file: %s", file)
+						}
 					}
 				}
 			case <-stop:
@@ -161,15 +205,15 @@ func main() {
 		}
 	}()
 
-	// NEW: Cleanup old parsed files
+	// NEW: Cleanup old parsed filesx
 	go func() {
 		for {
 			select {
 			case <-cleanupTicker.C:
 				logger.Info("Running scheduled cleanup of old parsed files")
 
-				// Clean up parsed files older than 24 hours
-				if err := fileManager.CleanupOldParsedFiles(24 * time.Hour); err != nil {
+				// Clean up parsed files older than 18 hours
+				if err := fileManager.CleanupOldParsedFiles(18 * time.Hour); err != nil {
 					logger.Error("Failed to clean up old parsed files: %v", err)
 				} else {
 					logger.Info("Successfully cleaned up old parsed files")
@@ -205,6 +249,11 @@ func main() {
 	// Stop the tickers
 	processTicker.Stop()
 	cleanupTicker.Stop()
+
+	// Close the file queue and wait for workers to finish
+	logger.Info("Waiting for worker pool to finish...")
+	close(fileQueue)
+	workerWg.Wait()
 
 	// Stop the queue
 	oddsQueue.Stop()

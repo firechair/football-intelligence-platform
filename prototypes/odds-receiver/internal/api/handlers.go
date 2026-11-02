@@ -2,6 +2,7 @@
 package api
 
 import (
+	"bytes"
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/firechair/odds-receiver/internal/filemanager"
@@ -112,21 +114,96 @@ func (h *Handler) ReceivePlain(w http.ResponseWriter, r *http.Request) {
 	h.logger.Info("Received plain XML data")
 	h.metrics.RecordFileReceived()
 
-	// Save the file using the file manager
-	filePath, err := h.fileManager.SaveFile(r.Body, false)
+	// Check for multipart form data
+	contentType := r.Header.Get("Content-Type")
+	h.logger.Debug("Content-Type: %s", contentType)
+
+	var xmlData []byte
+	var err error
+
+	if strings.Contains(contentType, "multipart/form-data") {
+		h.logger.Info("Detected multipart form data, parsing form")
+
+		// Parse the multipart form
+		if err := r.ParseMultipartForm(32 << 20); err != nil { // 32MB max memory
+			h.logger.Error("Error parsing multipart form: %v", err)
+			http.Error(w, "Bad Request: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		// Try to get the XML data from the form
+		xmlValue := r.FormValue("xml")
+		if xmlValue != "" {
+			h.logger.Info("Found XML data in form field 'xml'")
+			xmlData = []byte(xmlValue)
+		} else {
+			h.logger.Warn("No 'xml' field found in multipart form")
+
+			// Dump form data for debugging
+			h.logger.Debug("Form data keys: %v", r.PostForm)
+
+			// Fall back to reading the body
+			bodyBytes, err := ioutil.ReadAll(r.Body)
+			if err != nil {
+				h.logger.Error("Error reading request body: %v", err)
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				return
+			}
+			xmlData = bodyBytes
+		}
+	} else {
+		// Read the regular body
+		bodyBytes, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			h.logger.Error("Error reading request body: %v", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		xmlData = bodyBytes
+	}
+
+	// Save the XML data to a file
+	filePath, err := h.fileManager.SaveData(xmlData, false)
 	if err != nil {
 		h.logger.Error("Error saving file: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
 
-	// IMPORTANT: Return 200 OK immediately as mentioned in the documentation
-	// to acknowledge receipt (without parsing)
+	// IMPORTANT: Per provider requirements, acknowledge receipt immediately without parsing
 	w.WriteHeader(http.StatusOK)
-	h.logger.Info("Acknowledged receipt of plain XML data: %s", filePath)
+	fmt.Fprintln(w, "XML_RECEIVED_OK") // This matches what the PHP code returns
+	h.logger.Info("Acknowledged receipt of XML data: %s", filePath)
 
 	// Process the file asynchronously
 	go h.processFile(filePath, false)
+}
+
+// extractXMLFromMultipart extracts XML content from multipart form data
+func (h *Handler) extractXMLFromMultipart(data []byte) ([]byte, error) {
+	// Look for the XML content
+	start := bytes.Index(data, []byte("<?xml"))
+	if start == -1 {
+		return nil, fmt.Errorf("no XML content found in multipart data")
+	}
+
+	// Find the next boundary after the XML
+	end := bytes.Index(data[start:], []byte("--"))
+	if end == -1 {
+		// If no boundary found after XML, use the rest of the data
+		return data[start:], nil
+	}
+
+	return data[start : start+end], nil
+}
+
+// isUsefulXML performs a quick check to see if the XML might contain betting offers
+func (h *Handler) isUsefulXML(xmlData []byte) bool {
+	// Check for key elements that indicate useful data
+	return bytes.Contains(xmlData, []byte("<bettingoffer")) ||
+		bytes.Contains(xmlData, []byte("<liveodds_bettingoffer")) ||
+		bytes.Contains(xmlData, []byte("<outcome")) ||
+		bytes.Contains(xmlData, []byte("<liveodds_outcome"))
 }
 
 // processFile processes a saved XML file
@@ -153,11 +230,43 @@ func (h *Handler) processFile(filePath string, isGzipped bool) {
 		return
 	}
 
+	// Quick check if the XML might contain useful data before full parsing
+	if !h.isUsefulXML(xmlData) {
+		h.logger.Info("File %s does not contain betting offers or outcomes, skipping parsing", filePath)
+
+		// Mark as processed to avoid reprocessing
+		if err := h.fileManager.MarkFileAsParsed(filePath); err != nil {
+			h.logger.Error("Error marking non-useful file as parsed %s: %v", filePath, err)
+		} else {
+			h.logger.Info("Marked non-useful file as parsed: %s", filePath)
+		}
+		return
+	}
+
+	// Check if this is multipart form data and extract XML if needed
+	if bytes.Contains(xmlData, []byte("Content-Disposition: form-data")) {
+		h.logger.Info("Detected multipart form data in file %s, extracting XML content", filePath)
+		extractedXML, err := h.extractXMLFromMultipart(xmlData)
+		if err != nil {
+			h.logger.Error("Error extracting XML from multipart data in %s: %v", filePath, err)
+			h.metrics.RecordParseFailure()
+			return
+		}
+		xmlData = extractedXML
+	}
+
 	// Use the improved parser that can handle different XML formats and validates data
 	data, err := parser.ParseWithLogger(xmlData, h.logger)
 	if err != nil {
 		h.logger.Error("Error parsing XML from %s: %v", filePath, err)
 		h.metrics.RecordParseFailure()
+
+		// Still mark as processed to avoid reprocessing failed files
+		if err := h.fileManager.MarkFileAsParsed(filePath); err != nil {
+			h.logger.Error("Error marking failed file as parsed %s: %v", filePath, err)
+		} else {
+			h.logger.Info("Marked failed file as parsed to avoid reprocessing: %s", filePath)
+		}
 		return
 	}
 
@@ -170,28 +279,53 @@ func (h *Handler) processFile(filePath string, isGzipped bool) {
 
 	// Check if we have valid betting offers or outcomes
 	if len(data.BettingOffers) == 0 && len(data.Outcomes) == 0 {
-		h.logger.Warn("No betting offers or outcomes found in file %s", filePath)
-		h.metrics.RecordParseFailure()
+		h.logger.Info("No betting offers or outcomes found in file %s - this is likely a property update only", filePath)
 
 		// Still mark as processed to avoid reprocessing
 		if err := h.fileManager.MarkFileAsParsed(filePath); err != nil {
-			h.logger.Error("Error marking empty file as parsed %s: %v", filePath, err)
+			h.logger.Error("Error marking property-only file as parsed %s: %v", filePath, err)
+		} else {
+			h.logger.Info("Marked property-only file as parsed: %s", filePath)
 		}
 		return
 	}
 
-	// Process the parsed data
-	err = h.processor.Process(data)
-	if err != nil {
+	// Check if any betting offer is from a target bookmaker
+	hasTargetBookmaker := false
+	for _, offer := range data.BettingOffers {
+		if h.processor.IsTargetBookmaker(offer.OddsProviderFK) {
+			hasTargetBookmaker = true
+			break
+		}
+	}
+
+	if !hasTargetBookmaker && len(data.BettingOffers) > 0 {
+		h.logger.Info("Skipping file %s - contains no betting offers from target bookmakers", filePath)
+
+		// Mark as processed to avoid reprocessing
+		if err := h.fileManager.MarkFileAsParsed(filePath); err != nil {
+			h.logger.Error("Error marking non-target file as parsed %s: %v", filePath, err)
+		} else {
+			h.logger.Info("Marked non-target file as parsed: %s", filePath)
+		}
+		return
+	}
+
+	if err = h.processor.Process(data); err != nil {
 		h.logger.Error("Error processing odds data from %s: %v", filePath, err)
+		// Don't mark as processed if database upload failed
 		return
 	}
 
 	// Mark the file as processed
-	err = h.fileManager.MarkFileAsParsed(filePath)
-	if err != nil {
+	if err := h.fileManager.MarkFileAsParsed(filePath); err != nil {
 		h.logger.Error("Error marking file as parsed %s: %v", filePath, err)
 		return
+	}
+
+	// Mark as successfully processed (data is in database)
+	if err := h.fileManager.MarkFileAsSuccessfullyProcessed(filePath); err != nil {
+		h.logger.Warn("Error creating success marker for %s: %v", filePath, err)
 	}
 
 	// Record metrics
@@ -238,6 +372,14 @@ func (h *Handler) ProcessPendingFiles(w http.ResponseWriter, r *http.Request) {
 		h.logger.Error("Error listing pending files: %v", err)
 		http.Error(w, "Error listing pending files", http.StatusInternalServerError)
 		return
+	}
+
+	// Process files in batches to avoid overwhelming the system
+	maxConcurrent := 100 // Process 100 files at a time
+	if len(pendingFiles) > maxConcurrent {
+		h.logger.Info("Processing first %d files of %d total", maxConcurrent, len(pendingFiles))
+		// Only process a subset of files
+		pendingFiles = pendingFiles[:maxConcurrent]
 	}
 
 	// Process each file asynchronously
