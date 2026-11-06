@@ -4,6 +4,12 @@ Backend, data pipeline and AI agent prototype for a football analytics product: 
 
 [![CI](https://github.com/firechair/football-intelligence-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/firechair/football-intelligence-platform/actions/workflows/ci.yml)
 
+## Demo
+
+84 seconds, recorded from a clean clone: the stack starts, data is collected and the predictions are scored, the accuracy page fills in, the agent answers a question, and the Go receiver's tests run. Terminal output is real, replayed and sped up.
+
+https://github.com/user-attachments/assets/b853abcf-0c8b-4a92-83e4-d6ad057133e1
+
 ## What it did
 
 The product collected fixtures, predictions and odds compared across bookmakers, then measured how often those predictions came true. Users could ask about the data through an AI assistant.
