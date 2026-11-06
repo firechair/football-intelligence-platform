@@ -134,3 +134,7 @@ From prototypes in Streamlit, Flask and Go to the services here: [docs/EVOLUTION
 *Extracted from a private startup codebase I built (2024–2026). History filtered for publication: product name, bookmaker names and credentials redacted, unrelated modules removed. Code that was never committed is imported as snapshot commits: author date = last change to the files, committer date = import. Commits after the `history-import` tag are the 2026 cleanup.*
 
 Bookmaker names such as "Bookmaker A" and the name "FIP" are placeholders from that redaction, and hosts appear as `example.invalid`.
+
+## License
+
+None. The code is published to show my work: you may read it, but not copy, modify or reuse it without permission.
